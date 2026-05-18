@@ -11,6 +11,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/opensky/, '/api'),
       },
+      '/api/airplanes': {
+        target: 'https://api.airplanes.live',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/airplanes/, ''),
+      },
     },
   },
   plugins: [

@@ -19,24 +19,19 @@ type Airport = {
   lon: number
 }
 
-type OpenSkyState = [
-  string,
-  string | null,
-  string | null,
-  number | null,
-  number | null,
-  number | null,
-  number | null,
-  boolean,
-  number | null,
-  number | null,
-  number | null,
-  number[] | null,
-  number | null,
-  string | null,
-  boolean,
-  number,
-]
+type AdsbAircraft = {
+  hex?: string
+  flight?: string
+  alt_baro?: number | 'ground'
+  alt_geom?: number
+  gs?: number
+  track?: number
+  baro_rate?: number
+  geom_rate?: number
+  lat?: number
+  lon?: number
+  seen?: number
+}
 
 type Candidate = {
   icao24: string
@@ -76,11 +71,12 @@ type StoredSession = {
 const shortBreakMinutes = 5
 const longBreakMinutes = 15
 const longBreakInterval = 4
-const openSkyCooldownMs = 10_000
-const openSkyTimeoutMs = 12_000
+const aircraftSearchCooldownMs = 10_000
+const aircraftSearchTimeoutMs = 18_000
+const adsbSearchRadiusNm = 250
 const preferredAirportDistanceKm = 180
 const fallbackAirportDistanceKm = 850
-const openSkyApiBase = import.meta.env.DEV ? '/api/opensky' : 'https://opensky-network.org/api'
+const aircraftApiBase = import.meta.env.DEV ? '/api/airplanes' : 'https://api.airplanes.live'
 
 const airports: Airport[] = [
   { code: 'HND', name: 'Tokyo Haneda', city: 'Tokyo', lat: 35.5494, lon: 139.7798 },
@@ -116,6 +112,8 @@ const airports: Airport[] = [
   { code: 'LAS', name: 'Harry Reid', city: 'Las Vegas', lat: 36.084, lon: -115.1537 },
   { code: 'DEN', name: 'Denver', city: 'Denver', lat: 39.8561, lon: -104.6737 },
 ]
+
+const searchAirports = airports
 
 const createDemoCandidates = (): Candidate[] => {
   const currentContactTime = Math.floor(new Date().getTime() / 1000)
@@ -229,28 +227,28 @@ const getFlightPosition = (candidate: Candidate, progressRatio: number): Positio
   }
 }
 
-const getOpenSkyErrorMessage = (error: unknown) => {
+const getAircraftSearchErrorMessage = (error: unknown) => {
   if (error instanceof DOMException && error.name === 'AbortError') {
-    return 'OpenSkyの応答が遅いため、少し待って再試行してください。'
+    return '航空機データの応答が遅いため、少し待って再試行してください。'
   }
 
   if (!(error instanceof Error)) {
-    return 'OpenSkyに接続できませんでした。'
+    return '航空機データに接続できませんでした。'
   }
 
   if (error.message.includes('429')) {
-    return 'OpenSkyの利用制限に達しました。10秒ほど待ってから再試行してください。'
+    return '航空機データの利用制限に達しました。10秒ほど待ってから再試行してください。'
   }
 
   if (error.message.includes('401') || error.message.includes('403')) {
-    return 'OpenSkyが匿名アクセスを制限しています。時間を置くか、認証付き接続が必要です。'
+    return '航空機データの匿名アクセスが制限されています。時間を置いて再試行してください。'
   }
 
   if (error.message.includes('Failed to fetch')) {
-    return 'OpenSkyへのブラウザ接続がブロックされました。開発サーバーを再起動してプロキシ経由で試してください。'
+    return '航空機データへのブラウザ接続がブロックされました。開発サーバーを再起動してプロキシ経由で試してください。'
   }
 
-  return `OpenSky接続エラー: ${error.message}`
+  return `航空機データ接続エラー: ${error.message}`
 }
 
 const sendCompletionNotification = (sessionType: SessionType) => {
@@ -306,22 +304,42 @@ const projectPosition = (lat: number, lon: number, heading: number, distanceInKm
   }
 }
 
-const findCandidates = (states: OpenSkyState[], durationMinutes: number): Candidate[] => {
+const findCandidates = (aircraftList: AdsbAircraft[], durationMinutes: number): Candidate[] => {
   const targetSeconds = durationMinutes * 60
   const targetDistanceKm = 0
+  const seenAircraft = new Set<string>()
 
-  const rankedCandidates = states
-    .map((state): Candidate | null => {
-      const [icao24, callsign, originCountry, , lastContact, lon, lat, onGround, velocity, heading, verticalRate, , altitude] = state
+  const rankedCandidates = aircraftList
+    .map((aircraft): Candidate | null => {
+      const icao24 = aircraft.hex
+      const callsign = aircraft.flight?.trim()
+      const lat = aircraft.lat
+      const lon = aircraft.lon
+      const groundSpeedKnots = aircraft.gs
+      const heading = aircraft.track
+      const altitudeFeet = aircraft.alt_geom ?? (typeof aircraft.alt_baro === 'number' ? aircraft.alt_baro : null)
+      const verticalRateFeetPerMinute = aircraft.geom_rate ?? aircraft.baro_rate ?? 0
 
       if (
         !icao24 ||
-        lat === null ||
-        lon === null ||
-        velocity === null ||
-        heading === null ||
-        altitude === null ||
-        onGround ||
+        seenAircraft.has(icao24) ||
+        lat === undefined ||
+        lon === undefined ||
+        groundSpeedKnots === undefined ||
+        heading === undefined ||
+        altitudeFeet === null ||
+        aircraft.alt_baro === 'ground'
+      ) {
+        return null
+      }
+
+      seenAircraft.add(icao24)
+
+      const velocity = groundSpeedKnots * 0.514444
+      const altitude = altitudeFeet * 0.3048
+      const verticalRate = verticalRateFeetPerMinute / 196.85
+
+      if (
         velocity < 80
       ) {
         return null
@@ -346,20 +364,20 @@ const findCandidates = (states: OpenSkyState[], durationMinutes: number): Candid
 
       return {
         icao24,
-        callsign: callsign?.trim() || icao24.toUpperCase(),
-        originCountry: originCountry || 'Unknown',
+        callsign: callsign || icao24.toUpperCase(),
+        originCountry: 'ADS-B live',
         lat,
         lon,
         altitude,
         velocity,
         heading,
-        verticalRate: verticalRate ?? 0,
+        verticalRate,
         airport: nearestAirport.airport,
         projectedLat: projected.lat,
         projectedLon: projected.lon,
         distanceToAirportKm: nearestAirport.distance,
         score,
-        lastContact: lastContact ?? Math.floor(Date.now() / 1000),
+        lastContact: Math.floor((new Date().getTime() - (aircraft.seen ?? 0) * 1000) / 1000),
       }
     })
     .filter((candidate): candidate is Candidate => candidate !== null)
@@ -371,6 +389,36 @@ const findCandidates = (states: OpenSkyState[], durationMinutes: number): Candid
 
   return (preferredCandidates.length > 0 ? preferredCandidates : rankedCandidates)
     .slice(0, 8)
+}
+
+const fetchAircraftAroundAirports = async (signal: AbortSignal) => {
+  const responses = await Promise.allSettled(
+    searchAirports.map(async (airport) => {
+      const response = await fetch(
+        `${aircraftApiBase}/v2/point/${airport.lat}/${airport.lon}/${adsbSearchRadiusNm}`,
+        { signal },
+      )
+
+      if (!response.ok) {
+        throw new Error(`airplanes.live responded with ${response.status} ${response.statusText}`)
+      }
+
+      return (await response.json()) as { ac?: AdsbAircraft[]; now?: number; total?: number }
+    }),
+  )
+
+  const aircraftList = responses.flatMap((response) =>
+    response.status === 'fulfilled' ? response.value.ac ?? [] : [],
+  )
+
+  if (aircraftList.length === 0) {
+    const failedResponse = responses.find((response) => response.status === 'rejected')
+    if (failedResponse?.status === 'rejected') {
+      throw failedResponse.reason
+    }
+  }
+
+  return aircraftList
 }
 
 const createPlaneIcon = () =>
@@ -441,7 +489,7 @@ function App() {
   const layersRef = useRef<L.LayerGroup | null>(null)
   const focusedCandidateRef = useRef<string | null>(null)
   const completedTargetRef = useRef<number | null>(null)
-  const lastOpenSkySearchRef = useRef<number | null>(null)
+  const lastAircraftSearchRef = useRef<number | null>(null)
 
   const progress = useMemo(() => {
     if (!targetTime || !selectedCandidate) {
@@ -602,40 +650,32 @@ function App() {
 
   const searchFlights = async () => {
     const now = new Date().getTime()
-    const elapsedSinceLastSearch = lastOpenSkySearchRef.current ? now - lastOpenSkySearchRef.current : openSkyCooldownMs
+    const elapsedSinceLastSearch = lastAircraftSearchRef.current ? now - lastAircraftSearchRef.current : aircraftSearchCooldownMs
 
-    if (elapsedSinceLastSearch < openSkyCooldownMs) {
-      const retrySeconds = Math.ceil((openSkyCooldownMs - elapsedSinceLastSearch) / 1000)
-      setStatus(`OpenSkyの制限を避けるため、あと${retrySeconds}秒待ってから再試行してください。`)
+    if (elapsedSinceLastSearch < aircraftSearchCooldownMs) {
+      const retrySeconds = Math.ceil((aircraftSearchCooldownMs - elapsedSinceLastSearch) / 1000)
+      setStatus(`航空機データの制限を避けるため、あと${retrySeconds}秒待ってから再試行してください。`)
       return
     }
 
     setIsLoading(true)
     setUsingDemoData(false)
-    lastOpenSkySearchRef.current = now
+    lastAircraftSearchRef.current = now
     if (!targetTime) {
       setSelectedCandidate(null)
       setCurrentPosition(null)
       focusedCandidateRef.current = null
     }
-    setStatus('OpenSky Networkから全域のライブ航空機データを取得しています。')
+    setStatus('airplanes.liveから主要空港周辺のADS-Bデータを取得しています。')
 
     const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), openSkyTimeoutMs)
+    const timeoutId = window.setTimeout(() => controller.abort(), aircraftSearchTimeoutMs)
 
     try {
-      const response = await fetch(`${openSkyApiBase}/states/all`, {
-        signal: controller.signal,
-      })
-      if (!response.ok) {
-        throw new Error(`OpenSky responded with ${response.status} ${response.statusText}`)
-      }
-
-      const data = (await response.json()) as { states?: OpenSkyState[]; time?: number }
-      const nextCandidates = findCandidates(data.states ?? [], plannedDurationMinutes)
+      const aircraftList = await fetchAircraftAroundAirports(controller.signal)
+      const nextCandidates = findCandidates(aircraftList, plannedDurationMinutes)
       setCandidates(nextCandidates)
-      const responseTime = data.time ? data.time * 1000 : new Date().getTime()
-      setLastUpdated(new Date(responseTime))
+      setLastUpdated(new Date())
 
       if (nextCandidates.length === 0) {
         setStatus('条件に近い便が見つかりませんでした。時間を少し長めにして再検索してください。')
@@ -648,7 +688,7 @@ function App() {
       setCandidates(createDemoCandidates())
       setUsingDemoData(true)
       setLastUpdated(new Date())
-      setStatus(`${getOpenSkyErrorMessage(error)} デモ便で画面を確認できます。`)
+      setStatus(`${getAircraftSearchErrorMessage(error)} デモ便で画面を確認できます。`)
     } finally {
       window.clearTimeout(timeoutId)
       setIsLoading(false)
@@ -810,7 +850,7 @@ function App() {
             <h2>{selectedCandidate ? selectedCandidate.airport.name : 'Select a flight'}</h2>
           </div>
           <div className="map-meta">
-            <span className={usingDemoData ? 'source-pill demo' : 'source-pill'}>{usingDemoData ? 'Demo' : 'OpenSky free'}</span>
+            <span className={usingDemoData ? 'source-pill demo' : 'source-pill'}>{usingDemoData ? 'Demo' : 'ADS-B live'}</span>
             <span>
               <RefreshCw size={14} aria-hidden="true" />
               {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
