@@ -452,15 +452,50 @@ select {
   will-change: transform;
 }
 
-.plane-marker span {
+.plane-pointer {
+  position: relative;
   display: block;
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1;
-  transform: rotate(calc(var(--plane-bearing) - 45deg));
+  width: 20px;
+  height: 24px;
+  transform: rotate(var(--plane-bearing));
   transform-origin: center;
   transition: transform 240ms linear;
   will-change: transform;
+}
+
+.plane-pointer::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 8px;
+  height: 21px;
+  background: #101310;
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+  transform: translateX(-50%);
+}
+
+.plane-pointer::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  width: 20px;
+  height: 8px;
+  background: #101310;
+  clip-path: polygon(50% 0, 100% 100%, 58% 80%, 50% 48%, 42% 80%, 0 100%);
+  transform: translateX(-50%);
+}
+
+.plane-pointer span {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 14px;
+  height: 7px;
+  background: #101310;
+  clip-path: polygon(50% 0, 100% 100%, 56% 72%, 50% 55%, 44% 72%, 0 100%);
+  transform: translateX(-50%);
 }
 
 .airport-marker {

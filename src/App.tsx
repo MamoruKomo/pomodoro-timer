@@ -536,9 +536,9 @@ const fetchAircraftByHex = async (icao24: string, signal: AbortSignal) => {
 const createPlaneIcon = () =>
   L.divIcon({
     className: 'plane-marker',
-    html: '<span>✈</span>',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
+    html: '<span class="plane-pointer" aria-hidden="true"><span></span></span>',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
   })
 
 const createAirportIcon = () =>
