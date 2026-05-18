@@ -440,6 +440,7 @@ select {
 }
 
 .plane-marker {
+  --plane-bearing: 0deg;
   display: grid;
   place-items: center;
   color: #101310;
@@ -452,9 +453,14 @@ select {
 }
 
 .plane-marker span {
+  display: block;
   font-size: 18px;
   font-weight: 900;
   line-height: 1;
+  transform: rotate(calc(var(--plane-bearing) - 45deg));
+  transform-origin: center;
+  transition: transform 240ms linear;
+  will-change: transform;
 }
 
 .airport-marker {

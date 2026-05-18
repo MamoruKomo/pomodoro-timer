@@ -318,6 +318,22 @@ const distanceKm = (startLat: number, startLon: number, endLat: number, endLon: 
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
 }
 
+const bearingDegrees = (start: Position, destination: Position) => {
+  const startLat = toRadians(start.lat)
+  const destinationLat = toRadians(destination.lat)
+  const deltaLon = toRadians(destination.lon - start.lon)
+  const y = Math.sin(deltaLon) * Math.cos(destinationLat)
+  const x =
+    Math.cos(startLat) * Math.sin(destinationLat) -
+    Math.sin(startLat) * Math.cos(destinationLat) * Math.cos(deltaLon)
+
+  return (toDegrees(Math.atan2(y, x)) + 360) % 360
+}
+
+const setPlaneMarkerBearing = (marker: L.Marker | null, position: Position, destination: Position) => {
+  marker?.getElement()?.style.setProperty('--plane-bearing', `${bearingDegrees(position, destination)}deg`)
+}
+
 const projectPosition = (lat: number, lon: number, heading: number, distanceInKm: number) => {
   const earthRadiusKm = 6371
   const angularDistance = distanceInKm / earthRadiusKm
@@ -797,7 +813,6 @@ function App() {
       const airportIcon = createAirportIcon()
       planeMarkerRef.current = L.marker([position.lat, position.lon], {
         icon: planeIcon,
-        rotationAngle: candidate.heading,
         zIndexOffset: 1000,
       } as L.MarkerOptions)
         .bindPopup(`${candidate.callsign} / ${candidate.originCountry}`)
@@ -822,6 +837,7 @@ function App() {
         [candidate.airport.lat, candidate.airport.lon],
       ])
     }
+    setPlaneMarkerBearing(planeMarkerRef.current, position, { lat: candidate.airport.lat, lon: candidate.airport.lon })
 
     if (targetTime && selectedCandidate && currentPosition) {
       map.panTo([position.lat, position.lon], { animate: true, duration: 0.45, easeLinearity: 0.2 })
