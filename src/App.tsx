@@ -540,6 +540,7 @@ function App() {
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      detectRetina: true,
     }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control
@@ -588,14 +589,14 @@ function App() {
 
     const focusKey = `${candidate.icao24}-${candidate.airport.code}`
     if (targetTime && selectedCandidate && currentPosition) {
-      map.setView([position.lat, position.lon], Math.max(map.getZoom(), 11), { animate: true })
+      map.setView([position.lat, position.lon], Math.max(map.getZoom(), 15), { animate: true })
       focusedCandidateRef.current = focusKey
     } else if (focusedCandidateRef.current !== focusKey) {
       const bounds = L.latLngBounds([
         [position.lat, position.lon],
         [candidate.airport.lat, candidate.airport.lon],
       ])
-      map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 8 })
+      map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 13 })
       focusedCandidateRef.current = focusKey
     }
   }, [candidates, currentPosition, selectedCandidate, targetTime])
@@ -806,7 +807,7 @@ function App() {
       <section className="map-panel" aria-label="Flight map">
         <div className="map-toolbar">
           <div>
-            <p className="eyebrow">Street nav</p>
+            <p className="eyebrow">Street view map</p>
             <h2>{selectedCandidate ? selectedCandidate.airport.name : 'Select a flight'}</h2>
           </div>
           <div className="map-meta">
