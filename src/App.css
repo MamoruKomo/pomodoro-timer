@@ -1,19 +1,21 @@
 .app-shell {
-  min-height: 100svh;
+  height: 100svh;
   display: grid;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   color: #eef4ef;
   background: #161916;
+  overflow: hidden;
 }
 
 .control-panel {
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 22px;
+  gap: 10px;
+  padding: 14px;
   border-right: 1px solid #30382f;
   background: #1d211d;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .brand-row,
@@ -36,8 +38,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
-  padding: 6px 9px;
+  margin-bottom: 6px;
+  padding: 5px 8px;
   color: #bfffe2;
   background: #101310;
   border: 1px solid #34513e;
@@ -48,7 +50,7 @@
 }
 
 .route-line {
-  margin: 8px 0 0;
+  margin: 5px 0 0;
   color: #9aa69d;
   font-size: 12px;
   font-weight: 800;
@@ -70,17 +72,17 @@ h2 {
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1.18;
 }
 
 h2 {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.2;
 }
 
 .timer-block {
-  padding: 18px;
+  padding: 12px;
   border: 1px solid #374236;
   border-radius: 8px;
   background: #101310;
@@ -91,7 +93,7 @@ h2 {
   justify-content: space-between;
   gap: 8px;
   color: #bfffe2;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -109,9 +111,9 @@ h2 {
 }
 
 .timer-value {
-  margin-top: 10px;
+  margin-top: 7px;
   color: #eafff4;
-  font-size: 50px;
+  font-size: 38px;
   font-weight: 800;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -121,7 +123,7 @@ h2 {
 .timer-meta {
   justify-content: space-between;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 8px;
   color: #93a398;
   font-size: 12px;
   font-weight: 700;
@@ -138,14 +140,14 @@ h2 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .instrument-row span {
   display: grid;
   gap: 3px;
   min-width: 0;
-  padding: 8px;
+  padding: 6px;
   color: #effcf4;
   background: #1c231d;
   border: 1px solid #314034;
@@ -163,8 +165,8 @@ h2 {
 }
 
 .progress-track {
-  height: 12px;
-  margin-top: 14px;
+  height: 9px;
+  margin-top: 10px;
   overflow: hidden;
   background: #2b312c;
   border: 1px solid #3a443b;
@@ -181,7 +183,7 @@ h2 {
 .search-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 8px;
 }
 
 .auto-search-panel {
@@ -254,13 +256,13 @@ select {
 }
 
 .action-row {
-  gap: 10px;
+  gap: 8px;
 }
 
 .primary-button,
 .secondary-button,
 .icon-button {
-  min-height: 44px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -293,7 +295,7 @@ select {
 }
 
 .icon-button {
-  width: 44px;
+  width: 40px;
 }
 
 .spin {
@@ -301,11 +303,11 @@ select {
 }
 
 .status-line {
-  min-height: 22px;
+  min-height: 18px;
   margin: 0;
   color: #bac7bd;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .status-line span {
@@ -316,17 +318,20 @@ select {
 }
 
 .candidate-list {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  gap: 10px;
+  gap: 6px;
+  overflow-y: auto;
 }
 
 .candidate-card {
   width: 100%;
   position: relative;
   display: grid;
-  grid-template-columns: 54px 1fr;
-  gap: 6px 10px;
-  padding: 13px;
+  grid-template-columns: 46px 1fr;
+  gap: 3px 8px;
+  padding: 8px;
   text-align: left;
   color: #edf6ef;
   background: #242b25;
@@ -345,11 +350,11 @@ select {
   grid-row: span 3;
   display: grid;
   place-items: center;
-  min-height: 58px;
+  min-height: 44px;
   color: #161916;
   background: #ffcf66;
   border-radius: 5px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -366,7 +371,7 @@ select {
 .candidate-main span,
 .candidate-destination {
   color: #aab6ad;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .candidate-destination {
@@ -376,21 +381,22 @@ select {
 
 .candidate-route {
   color: #bfffe2;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .map-panel {
+  min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   background: #182222;
 }
 
 .map-toolbar {
   justify-content: space-between;
-  gap: 18px;
-  padding: 16px 20px;
+  gap: 12px;
+  padding: 10px 14px;
   color: #eef5f2;
   background: rgba(16, 19, 16, 0.86);
   border-bottom: 1px solid rgba(191, 255, 226, 0.22);
@@ -428,6 +434,7 @@ select {
 }
 
 .flight-map {
+  height: 100%;
   min-height: 100%;
   isolation: isolate;
 }
@@ -464,16 +471,20 @@ select {
 
 @media (max-width: 860px) {
   .app-shell {
+    height: auto;
+    min-height: 100svh;
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .control-panel {
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid #30382f;
   }
 
   .map-panel {
-    min-height: 560px;
+    min-height: 520px;
   }
 }
 

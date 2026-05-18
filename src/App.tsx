@@ -74,6 +74,9 @@ const longBreakInterval = 4
 const aircraftSearchCooldownMs = 10_000
 const aircraftSearchTimeoutMs = 18_000
 const adsbSearchRadiusNm = 250
+const flightPositionUpdateMs = 250
+const trackingMapZoom = 10
+const routeFitMaxZoom = 8
 const preferredAirportDistanceKm = 180
 const fallbackAirportDistanceKm = 850
 const aircraftApiBase = import.meta.env.DEV ? '/api/airplanes' : 'https://api.airplanes.live'
@@ -388,7 +391,7 @@ const findCandidates = (aircraftList: AdsbAircraft[], durationMinutes: number): 
   )
 
   return (preferredCandidates.length > 0 ? preferredCandidates : rankedCandidates)
-    .slice(0, 8)
+    .slice(0, 6)
 }
 
 const fetchAircraftAroundAirports = async (signal: AbortSignal) => {
@@ -553,7 +556,7 @@ function App() {
     }
 
     updateRemaining()
-    const intervalId = window.setInterval(updateRemaining, 1000)
+    const intervalId = window.setInterval(updateRemaining, flightPositionUpdateMs)
     return () => window.clearInterval(intervalId)
   }, [activeDurationMinutes, completeCurrentSession, selectedCandidate, startedAt, targetTime])
 
@@ -636,14 +639,18 @@ function App() {
 
     const focusKey = `${candidate.icao24}-${candidate.airport.code}`
     if (targetTime && selectedCandidate && currentPosition) {
-      map.setView([position.lat, position.lon], Math.max(map.getZoom(), 15), { animate: true })
+      if (map.getZoom() !== trackingMapZoom) {
+        map.setView([position.lat, position.lon], trackingMapZoom, { animate: true })
+      } else {
+        map.panTo([position.lat, position.lon], { animate: true, duration: 0.45, easeLinearity: 0.2 })
+      }
       focusedCandidateRef.current = focusKey
     } else if (focusedCandidateRef.current !== focusKey) {
       const bounds = L.latLngBounds([
         [position.lat, position.lon],
         [candidate.airport.lat, candidate.airport.lon],
       ])
-      map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 13 })
+      map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: routeFitMaxZoom })
       focusedCandidateRef.current = focusKey
     }
   }, [candidates, currentPosition, selectedCandidate, targetTime])
