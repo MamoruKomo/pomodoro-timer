@@ -58,6 +58,13 @@ type Position = {
   lon: number
 }
 
+type MotionPlan = {
+  from: Position
+  to: Position
+  startedAt: number
+  endsAt: number
+}
+
 type StoredSession = {
   selectedCandidate: Candidate
   targetTime: number
@@ -75,7 +82,7 @@ const aircraftSearchCooldownMs = 10_000
 const aircraftSearchTimeoutMs = 18_000
 const adsbSearchRadiusNm = 250
 const flightPositionUpdateMs = 250
-const trackingMapZoom = 10
+const aircraftPositionRefreshMs = 180_000
 const routeFitMaxZoom = 8
 const preferredAirportDistanceKm = 180
 const fallbackAirportDistanceKm = 850
@@ -227,6 +234,34 @@ const getFlightPosition = (candidate: Candidate, progressRatio: number): Positio
   return {
     lat: candidate.lat + (candidate.projectedLat - candidate.lat) * clampedRatio,
     lon: candidate.lon + (candidate.projectedLon - candidate.lon) * clampedRatio,
+  }
+}
+
+const interpolatePosition = (from: Position, to: Position, progressRatio: number): Position => {
+  const clampedRatio = Math.min(1, Math.max(0, progressRatio))
+
+  return {
+    lat: from.lat + (to.lat - from.lat) * clampedRatio,
+    lon: from.lon + (to.lon - from.lon) * clampedRatio,
+  }
+}
+
+const createMotionPlan = (
+  candidate: Candidate,
+  from: Position,
+  startedAt: number,
+  targetTime: number | null,
+): MotionPlan => {
+  const remainingMs = targetTime ? Math.max(0, targetTime - startedAt) : aircraftPositionRefreshMs
+  const motionDurationMs = Math.max(flightPositionUpdateMs, Math.min(aircraftPositionRefreshMs, remainingMs))
+  const projectedDistanceKm = (candidate.velocity * motionDurationMs) / 1000
+  const projected = projectPosition(candidate.lat, candidate.lon, candidate.heading, projectedDistanceKm)
+
+  return {
+    from,
+    to: { lat: projected.lat, lon: projected.lon },
+    startedAt,
+    endsAt: startedAt + motionDurationMs,
   }
 }
 
@@ -394,6 +429,53 @@ const findCandidates = (aircraftList: AdsbAircraft[], durationMinutes: number): 
     .slice(0, 6)
 }
 
+const updateCandidateFromAircraft = (
+  candidate: Candidate,
+  aircraft: AdsbAircraft,
+  targetTime: number | null,
+): Candidate | null => {
+  const lat = aircraft.lat
+  const lon = aircraft.lon
+  const groundSpeedKnots = aircraft.gs
+  const heading = aircraft.track
+  const altitudeFeet = aircraft.alt_geom ?? (typeof aircraft.alt_baro === 'number' ? aircraft.alt_baro : null)
+  const verticalRateFeetPerMinute = aircraft.geom_rate ?? aircraft.baro_rate ?? 0
+
+  if (
+    lat === undefined ||
+    lon === undefined ||
+    groundSpeedKnots === undefined ||
+    heading === undefined ||
+    altitudeFeet === null ||
+    aircraft.alt_baro === 'ground'
+  ) {
+    return null
+  }
+
+  const velocity = groundSpeedKnots * 0.514444
+  const altitude = altitudeFeet * 0.3048
+  const verticalRate = verticalRateFeetPerMinute / 196.85
+  const remainingSeconds = targetTime ? Math.max(0, (targetTime - new Date().getTime()) / 1000) : 0
+  const projectedDistanceKm = (velocity * remainingSeconds) / 1000
+  const projected = projectPosition(lat, lon, heading, projectedDistanceKm)
+  const distanceToAirportKm = distanceKm(projected.lat, projected.lon, candidate.airport.lat, candidate.airport.lon)
+
+  return {
+    ...candidate,
+    callsign: aircraft.flight?.trim() || candidate.callsign,
+    lat,
+    lon,
+    altitude,
+    velocity,
+    heading,
+    verticalRate,
+    projectedLat: projected.lat,
+    projectedLon: projected.lon,
+    distanceToAirportKm,
+    lastContact: Math.floor((new Date().getTime() - (aircraft.seen ?? 0) * 1000) / 1000),
+  }
+}
+
 const fetchAircraftAroundAirports = async (signal: AbortSignal) => {
   const responses = await Promise.allSettled(
     searchAirports.map(async (airport) => {
@@ -422,6 +504,17 @@ const fetchAircraftAroundAirports = async (signal: AbortSignal) => {
   }
 
   return aircraftList
+}
+
+const fetchAircraftByHex = async (icao24: string, signal: AbortSignal) => {
+  const response = await fetch(`${aircraftApiBase}/v2/hex/${icao24}`, { signal })
+
+  if (!response.ok) {
+    throw new Error(`airplanes.live responded with ${response.status} ${response.statusText}`)
+  }
+
+  const data = (await response.json()) as { ac?: AdsbAircraft[] }
+  return data.ac?.[0] ?? null
 }
 
 const createPlaneIcon = () =>
@@ -493,6 +586,9 @@ function App() {
   const focusedCandidateRef = useRef<string | null>(null)
   const completedTargetRef = useRef<number | null>(null)
   const lastAircraftSearchRef = useRef<number | null>(null)
+  const currentPositionRef = useRef<Position | null>(currentPosition)
+  const selectedCandidateRef = useRef<Candidate | null>(selectedCandidate)
+  const motionPlanRef = useRef<MotionPlan | null>(null)
 
   const progress = useMemo(() => {
     if (!targetTime || !selectedCandidate) {
@@ -504,6 +600,15 @@ function App() {
   }, [activeDurationMinutes, remainingSeconds, selectedCandidate, targetTime])
 
   const plannedDurationMinutes = getSessionDurationMinutes(sessionType, durationMinutes)
+  const selectedAircraftId = selectedCandidate?.icao24
+
+  useEffect(() => {
+    currentPositionRef.current = currentPosition
+  }, [currentPosition])
+
+  useEffect(() => {
+    selectedCandidateRef.current = selectedCandidate
+  }, [selectedCandidate])
 
   const completeCurrentSession = useCallback(() => {
     if (!selectedCandidate) {
@@ -511,6 +616,8 @@ function App() {
     }
 
     setCurrentPosition(getFlightPosition(selectedCandidate, 1))
+    currentPositionRef.current = getFlightPosition(selectedCandidate, 1)
+    motionPlanRef.current = null
     setTargetTime(null)
     setStartedAt(null)
     setRemainingSeconds(0)
@@ -543,11 +650,20 @@ function App() {
     }
 
     const updateRemaining = () => {
-      const nextRemainingSeconds = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000))
-      const sessionDurationMs = activeDurationMinutes * 60 * 1000
-      const progressRatio = sessionDurationMs > 0 ? (Date.now() - startedAt) / sessionDurationMs : 1
+      const now = new Date().getTime()
+      const nextRemainingSeconds = Math.max(0, Math.ceil((targetTime - now) / 1000))
       setRemainingSeconds(nextRemainingSeconds)
-      setCurrentPosition(getFlightPosition(selectedCandidate, progressRatio))
+
+      if (!motionPlanRef.current || now >= motionPlanRef.current.endsAt) {
+        const nextFrom = currentPositionRef.current ?? { lat: selectedCandidate.lat, lon: selectedCandidate.lon }
+        motionPlanRef.current = createMotionPlan(selectedCandidate, nextFrom, now, targetTime)
+      }
+
+      const motionPlan = motionPlanRef.current
+      const motionProgress = (now - motionPlan.startedAt) / (motionPlan.endsAt - motionPlan.startedAt)
+      const nextPosition = interpolatePosition(motionPlan.from, motionPlan.to, motionProgress)
+      currentPositionRef.current = nextPosition
+      setCurrentPosition(nextPosition)
 
       if (nextRemainingSeconds === 0 && completedTargetRef.current !== targetTime) {
         completedTargetRef.current = targetTime
@@ -558,7 +674,56 @@ function App() {
     updateRemaining()
     const intervalId = window.setInterval(updateRemaining, flightPositionUpdateMs)
     return () => window.clearInterval(intervalId)
-  }, [activeDurationMinutes, completeCurrentSession, selectedCandidate, startedAt, targetTime])
+  }, [completeCurrentSession, selectedCandidate, startedAt, targetTime])
+
+  useEffect(() => {
+    if (!selectedAircraftId || !targetTime) {
+      return
+    }
+
+    const controller = new AbortController()
+
+    const refreshAircraftPosition = async () => {
+      const activeCandidate = selectedCandidateRef.current
+      if (!activeCandidate || !targetTime) {
+        return
+      }
+
+      try {
+        const aircraft = await fetchAircraftByHex(activeCandidate.icao24, controller.signal)
+        if (!aircraft) {
+          return
+        }
+
+        const nextCandidate = updateCandidateFromAircraft(activeCandidate, aircraft, targetTime)
+        if (!nextCandidate) {
+          return
+        }
+
+        const now = new Date().getTime()
+        const nextFrom = currentPositionRef.current ?? { lat: nextCandidate.lat, lon: nextCandidate.lon }
+        selectedCandidateRef.current = nextCandidate
+        motionPlanRef.current = createMotionPlan(nextCandidate, nextFrom, now, targetTime)
+        setSelectedCandidate(nextCandidate)
+        setCandidates((previousCandidates) =>
+          previousCandidates.map((candidate) =>
+            candidate.icao24 === nextCandidate.icao24 ? nextCandidate : candidate,
+          ),
+        )
+        setLastUpdated(new Date())
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setStatus(getAircraftSearchErrorMessage(error))
+        }
+      }
+    }
+
+    const intervalId = window.setInterval(refreshAircraftPosition, aircraftPositionRefreshMs)
+    return () => {
+      controller.abort()
+      window.clearInterval(intervalId)
+    }
+  }, [selectedAircraftId, targetTime])
 
   useEffect(() => {
     if (!selectedCandidate || !targetTime) {
@@ -639,11 +804,7 @@ function App() {
 
     const focusKey = `${candidate.icao24}-${candidate.airport.code}`
     if (targetTime && selectedCandidate && currentPosition) {
-      if (map.getZoom() !== trackingMapZoom) {
-        map.setView([position.lat, position.lon], trackingMapZoom, { animate: true })
-      } else {
-        map.panTo([position.lat, position.lon], { animate: true, duration: 0.45, easeLinearity: 0.2 })
-      }
+      map.panTo([position.lat, position.lon], { animate: true, duration: 0.45, easeLinearity: 0.2 })
       focusedCandidateRef.current = focusKey
     } else if (focusedCandidateRef.current !== focusKey) {
       const bounds = L.latLngBounds([
@@ -711,7 +872,10 @@ function App() {
     setActiveDurationMinutes(nextDurationMinutes)
     setTargetTime(nextTargetTime)
     setRemainingSeconds(nextDurationMinutes * 60)
-    setCurrentPosition({ lat: candidate.lat, lon: candidate.lon })
+    const initialPosition = { lat: candidate.lat, lon: candidate.lon }
+    setCurrentPosition(initialPosition)
+    currentPositionRef.current = initialPosition
+    motionPlanRef.current = createMotionPlan(candidate, initialPosition, nextStartedAt, nextTargetTime)
     completedTargetRef.current = null
     setStatus(`${getSessionLabel(sessionType)}: ${candidate.callsign} と ${candidate.airport.city} へ。`)
   }
@@ -722,6 +886,8 @@ function App() {
     setStartedAt(null)
     setRemainingSeconds(0)
     setCurrentPosition(null)
+    currentPositionRef.current = null
+    motionPlanRef.current = null
     setSessionType('work')
     setCompletedPomodoros(0)
     setActiveDurationMinutes(durationMinutes)
