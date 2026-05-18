@@ -442,17 +442,18 @@ select {
 .plane-marker {
   display: grid;
   place-items: center;
-  color: #fff;
-  background: #62d99a;
-  border: 2px solid #fff;
+  color: #101310;
+  background: #ffcf66;
+  border: 3px solid #ffffff;
   border-radius: 50%;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 3px rgba(16, 19, 16, 0.62), 0 10px 24px rgba(0, 0, 0, 0.34);
   transition: transform 240ms linear;
   will-change: transform;
 }
 
 .plane-marker span {
-  font-size: 17px;
+  font-size: 18px;
+  font-weight: 900;
   line-height: 1;
 }
 

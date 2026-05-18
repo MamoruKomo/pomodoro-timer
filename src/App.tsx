@@ -778,8 +778,6 @@ function App() {
       return
     }
 
-    layers.clearLayers()
-
     const candidate = selectedCandidate ?? candidates[0]
     if (!candidate) {
       layers.clearLayers()
@@ -800,6 +798,7 @@ function App() {
       planeMarkerRef.current = L.marker([position.lat, position.lon], {
         icon: planeIcon,
         rotationAngle: candidate.heading,
+        zIndexOffset: 1000,
       } as L.MarkerOptions)
         .bindPopup(`${candidate.callsign} / ${candidate.originCountry}`)
         .addTo(layers)
