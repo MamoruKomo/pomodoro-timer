@@ -89,6 +89,8 @@ const longBreakMinutes = 15
 const longBreakInterval = 4
 const openSkyCooldownMs = 10_000
 const openSkyTimeoutMs = 12_000
+const preferredAirportDistanceKm = 180
+const fallbackAirportDistanceKm = 850
 const openSkyApiBase = import.meta.env.DEV ? '/api/opensky' : 'https://opensky-network.org/api'
 
 const regions: Region[] = [
@@ -342,7 +344,7 @@ const findCandidates = (states: OpenSkyState[], durationMinutes: number): Candid
   const targetSeconds = durationMinutes * 60
   const targetDistanceKm = 0
 
-  return states
+  const rankedCandidates = states
     .map((state): Candidate | null => {
       const [icao24, callsign, originCountry, , lastContact, lon, lat, onGround, velocity, heading, verticalRate, , altitude] = state
 
@@ -368,7 +370,7 @@ const findCandidates = (states: OpenSkyState[], durationMinutes: number): Candid
         }))
         .sort((first, second) => first.distance - second.distance)[0]
 
-      if (!nearestAirport || nearestAirport.distance > 160) {
+      if (!nearestAirport || nearestAirport.distance > fallbackAirportDistanceKm) {
         return null
       }
 
@@ -396,6 +398,12 @@ const findCandidates = (states: OpenSkyState[], durationMinutes: number): Candid
     })
     .filter((candidate): candidate is Candidate => candidate !== null)
     .sort((first, second) => first.score - second.score)
+
+  const preferredCandidates = rankedCandidates.filter(
+    (candidate) => candidate.distanceToAirportKm <= preferredAirportDistanceKm,
+  )
+
+  return (preferredCandidates.length > 0 ? preferredCandidates : rankedCandidates)
     .slice(0, 8)
 }
 
@@ -672,6 +680,8 @@ function App() {
 
       if (nextCandidates.length === 0) {
         setStatus('条件に近い便が見つかりませんでした。地域を変えるか、時間を少し長めにしてください。')
+      } else if (nextCandidates.every((candidate) => candidate.distanceToAirportKm > preferredAirportDistanceKm)) {
+        setStatus('到着予測が近い便を広めに表示しています。時間や地域を変えると候補が入れ替わります。')
       } else {
         setStatus(`${nextCandidates.length}件の候補を見つけました。`)
       }
@@ -833,7 +843,7 @@ function App() {
                 {candidate.airport.city} / {candidate.airport.code}
               </span>
               <span className="candidate-route">
-                HDG {Math.round(candidate.heading).toString().padStart(3, '0')} / {Math.round(candidate.velocity * 3.6)} km/h
+                HDG {Math.round(candidate.heading).toString().padStart(3, '0')} / {Math.round(candidate.distanceToAirportKm)} km
               </span>
             </button>
           ))}
