@@ -86,6 +86,9 @@ type StoredSession = {
 const shortBreakMinutes = 5
 const longBreakMinutes = 15
 const longBreakInterval = 4
+const openSkyCooldownMs = 10_000
+const openSkyTimeoutMs = 12_000
+const openSkyApiBase = import.meta.env.DEV ? '/api/opensky' : 'https://opensky-network.org/api'
 
 const regions: Region[] = [
   {
@@ -255,6 +258,30 @@ const getFlightPosition = (candidate: Candidate, progressRatio: number): Positio
     lat: candidate.lat + (candidate.projectedLat - candidate.lat) * clampedRatio,
     lon: candidate.lon + (candidate.projectedLon - candidate.lon) * clampedRatio,
   }
+}
+
+const getOpenSkyErrorMessage = (error: unknown) => {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return 'OpenSkyの応答が遅いため、少し待って再試行してください。'
+  }
+
+  if (!(error instanceof Error)) {
+    return 'OpenSkyに接続できませんでした。'
+  }
+
+  if (error.message.includes('429')) {
+    return 'OpenSkyの利用制限に達しました。10秒ほど待ってから再試行してください。'
+  }
+
+  if (error.message.includes('401') || error.message.includes('403')) {
+    return 'OpenSkyが匿名アクセスを制限しています。時間を置くか、認証付き接続が必要です。'
+  }
+
+  if (error.message.includes('Failed to fetch')) {
+    return 'OpenSkyへのブラウザ接続がブロックされました。開発サーバーを再起動してプロキシ経由で試してください。'
+  }
+
+  return `OpenSky接続エラー: ${error.message}`
 }
 
 const sendCompletionNotification = (sessionType: SessionType) => {
@@ -440,6 +467,7 @@ function App() {
   const layersRef = useRef<L.LayerGroup | null>(null)
   const focusedCandidateRef = useRef<string | null>(null)
   const completedTargetRef = useRef<number | null>(null)
+  const lastOpenSkySearchRef = useRef<number | null>(null)
 
   const selectedRegion = useMemo(
     () => regions.find((region) => region.id === regionId) ?? regions[0],
@@ -601,8 +629,18 @@ function App() {
   }, [candidates, currentPosition, selectedCandidate])
 
   const searchFlights = async () => {
+    const now = new Date().getTime()
+    const elapsedSinceLastSearch = lastOpenSkySearchRef.current ? now - lastOpenSkySearchRef.current : openSkyCooldownMs
+
+    if (elapsedSinceLastSearch < openSkyCooldownMs) {
+      const retrySeconds = Math.ceil((openSkyCooldownMs - elapsedSinceLastSearch) / 1000)
+      setStatus(`OpenSkyの制限を避けるため、あと${retrySeconds}秒待ってから再試行してください。`)
+      return
+    }
+
     setIsLoading(true)
     setUsingDemoData(false)
+    lastOpenSkySearchRef.current = now
     if (!targetTime) {
       setSelectedCandidate(null)
       setCurrentPosition(null)
@@ -614,10 +652,15 @@ function App() {
       Object.entries(selectedRegion.bounds).map(([key, value]) => [key, value.toString()]),
     )
 
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), openSkyTimeoutMs)
+
     try {
-      const response = await fetch(`https://opensky-network.org/api/states/all?${params.toString()}`)
+      const response = await fetch(`${openSkyApiBase}/states/all?${params.toString()}`, {
+        signal: controller.signal,
+      })
       if (!response.ok) {
-        throw new Error(`OpenSky responded with ${response.status}`)
+        throw new Error(`OpenSky responded with ${response.status} ${response.statusText}`)
       }
 
       const data = (await response.json()) as { states?: OpenSkyState[]; time?: number }
@@ -631,12 +674,13 @@ function App() {
       } else {
         setStatus(`${nextCandidates.length}件の候補を見つけました。`)
       }
-    } catch {
+    } catch (error) {
       setCandidates(createDemoCandidates())
       setUsingDemoData(true)
       setLastUpdated(new Date())
-      setStatus('OpenSkyに接続できなかったため、デモ便で画面を確認できます。')
+      setStatus(`${getOpenSkyErrorMessage(error)} デモ便で画面を確認できます。`)
     } finally {
+      window.clearTimeout(timeoutId)
       setIsLoading(false)
     }
   }
