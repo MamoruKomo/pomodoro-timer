@@ -5,6 +5,7 @@ import {
   Clock,
   Loader2,
   MapPin,
+  Plane,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -727,22 +728,43 @@ function App() {
     <main className="app-shell">
       <section className="control-panel" aria-label="Flight focus timer controls">
         <header className="brand-row">
-          <p className="eyebrow">Flight Focus</p>
+          <div className="brand-mark">
+            <Plane size={18} aria-hidden="true" />
+            FLT-FOCUS
+          </div>
           <h1>到着まで集中する。</h1>
+          <p className="route-line">
+            {selectedCandidate ? `${selectedCandidate.callsign} / ${selectedCandidate.airport.code}` : 'STANDBY / SELECT FLIGHT'}
+          </p>
         </header>
 
         <div className="timer-block">
           <div className="timer-label">
             <Clock size={18} aria-hidden="true" />
-            {getSessionLabel(sessionType)}
+            <span>{getSessionLabel(sessionType)}</span>
+            <span className="timer-state">{targetTime ? 'IN FLIGHT' : 'ON GROUND'}</span>
           </div>
           <div className="timer-value">
             {targetTime ? formatDuration(remainingSeconds) : formatDuration(plannedDurationMinutes * 60)}
           </div>
           <div className="timer-meta">
-            <span>{selectedCandidate ? `${selectedCandidate.callsign} to ${selectedCandidate.airport.code}` : 'Ready'}</span>
-            <span>{completedPomodoros % longBreakInterval}/{longBreakInterval}</span>
-            <span>{getNextSessionLabel(sessionType, completedPomodoros)}</span>
+            <span>CALLSIGN {selectedCandidate ? selectedCandidate.callsign : 'READY'}</span>
+            <span>CYCLE {completedPomodoros % longBreakInterval}/{longBreakInterval}</span>
+            <span>{getNextSessionLabel(sessionType, completedPomodoros).toUpperCase()}</span>
+          </div>
+          <div className="instrument-row" aria-label="Flight instruments">
+            <span>
+              <strong>HDG</strong>
+              {selectedCandidate ? Math.round(selectedCandidate.heading).toString().padStart(3, '0') : '---'}
+            </span>
+            <span>
+              <strong>DEST</strong>
+              {selectedCandidate ? selectedCandidate.airport.code : '---'}
+            </span>
+            <span>
+              <strong>ETA</strong>
+              {targetTime ? new Date(targetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+            </span>
           </div>
           <div className="progress-track" aria-hidden="true">
             <span style={{ width: `${progress}%` }} />
@@ -791,7 +813,7 @@ function App() {
           )}
         </div>
 
-        <p className="status-line">{status}</p>
+        <p className="status-line"><span>ATC</span>{status}</p>
 
         <div className="candidate-list" aria-label="Flight candidates">
           {candidates.map((candidate) => (
@@ -801,6 +823,7 @@ function App() {
               key={candidate.icao24}
               onClick={() => startSession(candidate)}
             >
+              <span className="flight-strip-code">{candidate.airport.code}</span>
               <span className="candidate-main">
                 <strong>{candidate.callsign}</strong>
                 <span>{candidate.originCountry}</span>
@@ -808,6 +831,9 @@ function App() {
               <span className="candidate-destination">
                 <MapPin size={15} aria-hidden="true" />
                 {candidate.airport.city} / {candidate.airport.code}
+              </span>
+              <span className="candidate-route">
+                HDG {Math.round(candidate.heading).toString().padStart(3, '0')} / {Math.round(candidate.velocity * 3.6)} km/h
               </span>
             </button>
           ))}
@@ -817,7 +843,7 @@ function App() {
       <section className="map-panel" aria-label="Flight map">
         <div className="map-toolbar">
           <div>
-            <p className="eyebrow">Live map</p>
+            <p className="eyebrow">Satellite nav</p>
             <h2>{selectedCandidate ? selectedCandidate.airport.name : 'Select a flight'}</h2>
           </div>
           <div className="map-meta">
