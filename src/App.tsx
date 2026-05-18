@@ -583,6 +583,9 @@ function App() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layersRef = useRef<L.LayerGroup | null>(null)
+  const planeMarkerRef = useRef<L.Marker | null>(null)
+  const airportMarkerRef = useRef<L.Marker | null>(null)
+  const routeLineRef = useRef<L.Polyline | null>(null)
   const focusedCandidateRef = useRef<string | null>(null)
   const completedTargetRef = useRef<number | null>(null)
   const lastAircraftSearchRef = useRef<number | null>(null)
@@ -779,30 +782,48 @@ function App() {
 
     const candidate = selectedCandidate ?? candidates[0]
     if (!candidate) {
-      map.setView([35.7, 139.7], 4)
+      layers.clearLayers()
+      planeMarkerRef.current = null
+      airportMarkerRef.current = null
+      routeLineRef.current = null
       focusedCandidateRef.current = null
       return
     }
 
     const position = selectedCandidate && currentPosition ? currentPosition : { lat: candidate.lat, lon: candidate.lon }
+    const focusKey = `${candidate.icao24}-${candidate.airport.code}`
 
-    const planeIcon = createPlaneIcon()
-    const airportIcon = createAirportIcon()
-    L.marker([position.lat, position.lon], { icon: planeIcon, rotationAngle: candidate.heading } as L.MarkerOptions)
-      .bindPopup(`${candidate.callsign} / ${candidate.originCountry}`)
-      .addTo(layers)
-    L.marker([candidate.airport.lat, candidate.airport.lon], { icon: airportIcon })
-      .bindPopup(`${candidate.airport.code} ${candidate.airport.name}`)
-      .addTo(layers)
-    L.polyline(
-      [
+    if (focusedCandidateRef.current !== focusKey || !planeMarkerRef.current) {
+      layers.clearLayers()
+      const planeIcon = createPlaneIcon()
+      const airportIcon = createAirportIcon()
+      planeMarkerRef.current = L.marker([position.lat, position.lon], {
+        icon: planeIcon,
+        rotationAngle: candidate.heading,
+      } as L.MarkerOptions)
+        .bindPopup(`${candidate.callsign} / ${candidate.originCountry}`)
+        .addTo(layers)
+      airportMarkerRef.current = L.marker([candidate.airport.lat, candidate.airport.lon], { icon: airportIcon })
+        .bindPopup(`${candidate.airport.code} ${candidate.airport.name}`)
+        .addTo(layers)
+      routeLineRef.current = L.polyline(
+        [
+          [position.lat, position.lon],
+          [candidate.airport.lat, candidate.airport.lon],
+        ],
+        { color: '#ffffff', weight: 3, opacity: 0.9, dashArray: '8 8' },
+      ).addTo(layers)
+    } else {
+      planeMarkerRef.current.setLatLng([position.lat, position.lon])
+      planeMarkerRef.current.setPopupContent(`${candidate.callsign} / ${candidate.originCountry}`)
+      airportMarkerRef.current?.setLatLng([candidate.airport.lat, candidate.airport.lon])
+      airportMarkerRef.current?.setPopupContent(`${candidate.airport.code} ${candidate.airport.name}`)
+      routeLineRef.current?.setLatLngs([
         [position.lat, position.lon],
         [candidate.airport.lat, candidate.airport.lon],
-      ],
-      { color: '#ffffff', weight: 3, opacity: 0.9, dashArray: '8 8' },
-    ).addTo(layers)
+      ])
+    }
 
-    const focusKey = `${candidate.icao24}-${candidate.airport.code}`
     if (targetTime && selectedCandidate && currentPosition) {
       map.panTo([position.lat, position.lon], { animate: true, duration: 0.45, easeLinearity: 0.2 })
       focusedCandidateRef.current = focusKey

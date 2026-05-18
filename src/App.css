@@ -447,6 +447,8 @@ select {
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  transition: transform 240ms linear;
+  will-change: transform;
 }
 
 .plane-marker span {
