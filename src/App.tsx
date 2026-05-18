@@ -11,17 +11,6 @@ import {
 } from 'lucide-react'
 import './App.css'
 
-type Region = {
-  id: string
-  label: string
-  bounds: {
-    lamin: number
-    lomin: number
-    lamax: number
-    lomax: number
-  }
-}
-
 type Airport = {
   code: string
   name: string
@@ -92,29 +81,6 @@ const openSkyTimeoutMs = 12_000
 const preferredAirportDistanceKm = 180
 const fallbackAirportDistanceKm = 850
 const openSkyApiBase = import.meta.env.DEV ? '/api/opensky' : 'https://opensky-network.org/api'
-
-const regions: Region[] = [
-  {
-    id: 'japan',
-    label: 'Japan / East Asia',
-    bounds: { lamin: 24, lomin: 122, lamax: 46, lomax: 146 },
-  },
-  {
-    id: 'europe',
-    label: 'Europe',
-    bounds: { lamin: 35, lomin: -12, lamax: 62, lomax: 32 },
-  },
-  {
-    id: 'us-west',
-    label: 'US West',
-    bounds: { lamin: 30, lomin: -126, lamax: 50, lomax: -108 },
-  },
-  {
-    id: 'us-east',
-    label: 'US East',
-    bounds: { lamin: 25, lomin: -84, lamax: 47, lomax: -66 },
-  },
-]
 
 const airports: Airport[] = [
   { code: 'HND', name: 'Tokyo Haneda', city: 'Tokyo', lat: 35.5494, lon: 139.7798 },
@@ -426,7 +392,6 @@ const createAirportIcon = () =>
 function App() {
   const [restoredSession] = useState<StoredSession | null>(() => loadStoredSession())
   const [durationMinutes, setDurationMinutes] = useState(restoredSession?.durationMinutes ?? 45)
-  const [regionId, setRegionId] = useState(regions[0].id)
   const [candidates, setCandidates] = useState<Candidate[]>(
     restoredSession ? [restoredSession.selectedCandidate] : [],
   )
@@ -477,11 +442,6 @@ function App() {
   const focusedCandidateRef = useRef<string | null>(null)
   const completedTargetRef = useRef<number | null>(null)
   const lastOpenSkySearchRef = useRef<number | null>(null)
-
-  const selectedRegion = useMemo(
-    () => regions.find((region) => region.id === regionId) ?? regions[0],
-    [regionId],
-  )
 
   const progress = useMemo(() => {
     if (!targetTime || !selectedCandidate) {
@@ -578,13 +538,13 @@ function App() {
       attributionControl: false,
     }).setView([35.7, 139.7], 5)
 
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
     }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control
       .attribution({ position: 'bottomleft', prefix: false })
-      .addAttribution('Tiles &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community')
+      .addAttribution('&copy; OpenStreetMap contributors')
       .addTo(map)
 
     const layers = L.layerGroup().addTo(map)
@@ -627,7 +587,10 @@ function App() {
     ).addTo(layers)
 
     const focusKey = `${candidate.icao24}-${candidate.airport.code}`
-    if (focusedCandidateRef.current !== focusKey) {
+    if (targetTime && selectedCandidate && currentPosition) {
+      map.setView([position.lat, position.lon], Math.max(map.getZoom(), 11), { animate: true })
+      focusedCandidateRef.current = focusKey
+    } else if (focusedCandidateRef.current !== focusKey) {
       const bounds = L.latLngBounds([
         [position.lat, position.lon],
         [candidate.airport.lat, candidate.airport.lon],
@@ -635,7 +598,7 @@ function App() {
       map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 8 })
       focusedCandidateRef.current = focusKey
     }
-  }, [candidates, currentPosition, selectedCandidate])
+  }, [candidates, currentPosition, selectedCandidate, targetTime])
 
   const searchFlights = async () => {
     const now = new Date().getTime()
@@ -655,17 +618,13 @@ function App() {
       setCurrentPosition(null)
       focusedCandidateRef.current = null
     }
-    setStatus('OpenSky Networkからライブ航空機データを取得しています。')
-
-    const params = new URLSearchParams(
-      Object.entries(selectedRegion.bounds).map(([key, value]) => [key, value.toString()]),
-    )
+    setStatus('OpenSky Networkから全域のライブ航空機データを取得しています。')
 
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => controller.abort(), openSkyTimeoutMs)
 
     try {
-      const response = await fetch(`${openSkyApiBase}/states/all?${params.toString()}`, {
+      const response = await fetch(`${openSkyApiBase}/states/all`, {
         signal: controller.signal,
       })
       if (!response.ok) {
@@ -679,9 +638,9 @@ function App() {
       setLastUpdated(new Date(responseTime))
 
       if (nextCandidates.length === 0) {
-        setStatus('条件に近い便が見つかりませんでした。地域を変えるか、時間を少し長めにしてください。')
+        setStatus('条件に近い便が見つかりませんでした。時間を少し長めにして再検索してください。')
       } else if (nextCandidates.every((candidate) => candidate.distanceToAirportKm > preferredAirportDistanceKm)) {
-        setStatus('到着予測が近い便を広めに表示しています。時間や地域を変えると候補が入れ替わります。')
+        setStatus('到着予測が近い便を広めに表示しています。時間を変えると候補が入れ替わります。')
       } else {
         setStatus(`${nextCandidates.length}件の候補を見つけました。`)
       }
@@ -796,16 +755,10 @@ function App() {
               <span>min</span>
             </div>
           </label>
-          <label>
-            探す地域
-            <select value={regionId} onChange={(event) => setRegionId(event.target.value)}>
-              {regions.map((region) => (
-                <option key={region.id} value={region.id}>
-                  {region.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="auto-search-panel">
+            <span>SEARCH</span>
+            <strong>GLOBAL AUTO</strong>
+          </div>
         </div>
 
         <div className="action-row">
@@ -853,7 +806,7 @@ function App() {
       <section className="map-panel" aria-label="Flight map">
         <div className="map-toolbar">
           <div>
-            <p className="eyebrow">Satellite nav</p>
+            <p className="eyebrow">Street nav</p>
             <h2>{selectedCandidate ? selectedCandidate.airport.name : 'Select a flight'}</h2>
           </div>
           <div className="map-meta">

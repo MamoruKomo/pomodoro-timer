@@ -184,6 +184,29 @@ h2 {
   gap: 12px;
 }
 
+.auto-search-panel {
+  display: grid;
+  align-content: center;
+  min-height: 44px;
+  padding: 0 12px;
+  color: #f1f7f2;
+  background: #101310;
+  border: 1px solid #3c453d;
+  border-radius: 8px;
+}
+
+.auto-search-panel span {
+  color: #ffcf66;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.auto-search-panel strong {
+  font-size: 13px;
+  line-height: 1.1;
+}
+
 label {
   display: grid;
   gap: 8px;
