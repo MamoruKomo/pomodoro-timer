@@ -538,14 +538,13 @@ function App() {
       attributionControl: false,
     }).setView([35.7, 139.7], 5)
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      detectRetina: true,
     }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control
       .attribution({ position: 'bottomleft', prefix: false })
-      .addAttribution('&copy; OpenStreetMap contributors')
+      .addAttribution('Tiles &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community')
       .addTo(map)
 
     const layers = L.layerGroup().addTo(map)
@@ -807,7 +806,7 @@ function App() {
       <section className="map-panel" aria-label="Flight map">
         <div className="map-toolbar">
           <div>
-            <p className="eyebrow">Street view map</p>
+            <p className="eyebrow">Satellite nav</p>
             <h2>{selectedCandidate ? selectedCandidate.airport.name : 'Select a flight'}</h2>
           </div>
           <div className="map-meta">
