@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import {
   Bell,
   Clock,
-  Compass,
   Loader2,
   MapPin,
-  Plane,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -68,11 +66,26 @@ type Candidate = {
   lastContact: number
 }
 
+type SessionType = 'work' | 'shortBreak' | 'longBreak'
+
+type Position = {
+  lat: number
+  lon: number
+}
+
 type StoredSession = {
   selectedCandidate: Candidate
   targetTime: number
   durationMinutes: number
+  startedAt?: number
+  activeDurationMinutes?: number
+  sessionType?: SessionType
+  completedPomodoros?: number
 }
+
+const shortBreakMinutes = 5
+const longBreakMinutes = 15
+const longBreakInterval = 4
 
 const regions: Region[] = [
   {
@@ -203,6 +216,60 @@ const formatDuration = (totalSeconds: number) => {
     .join(':')
 }
 
+const getSessionDurationMinutes = (sessionType: SessionType, workMinutes: number) => {
+  if (sessionType === 'shortBreak') {
+    return shortBreakMinutes
+  }
+
+  if (sessionType === 'longBreak') {
+    return longBreakMinutes
+  }
+
+  return workMinutes
+}
+
+const getSessionLabel = (sessionType: SessionType) => {
+  if (sessionType === 'shortBreak') {
+    return 'Short break'
+  }
+
+  if (sessionType === 'longBreak') {
+    return 'Long break'
+  }
+
+  return 'Focus'
+}
+
+const getNextSessionLabel = (sessionType: SessionType, completedPomodoros: number) => {
+  if (sessionType !== 'work') {
+    return 'Next: Focus'
+  }
+
+  return (completedPomodoros + 1) % longBreakInterval === 0 ? 'Next: Long break' : 'Next: Short break'
+}
+
+const getFlightPosition = (candidate: Candidate, progressRatio: number): Position => {
+  const clampedRatio = Math.min(1, Math.max(0, progressRatio))
+
+  return {
+    lat: candidate.lat + (candidate.projectedLat - candidate.lat) * clampedRatio,
+    lon: candidate.lon + (candidate.projectedLon - candidate.lon) * clampedRatio,
+  }
+}
+
+const sendCompletionNotification = (sessionType: SessionType) => {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    return
+  }
+
+  new Notification('Flight Focus Timer', {
+    body:
+      sessionType === 'work'
+        ? '集中時間が終わりました。休憩に進みます。'
+        : '休憩が終わりました。次の集中へ進めます。',
+  })
+}
+
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180
 const toDegrees = (radians: number) => (radians * 180) / Math.PI
 
@@ -330,19 +397,49 @@ function App() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(
     restoredSession?.selectedCandidate ?? null,
   )
+  const [sessionType, setSessionType] = useState<SessionType>(restoredSession?.sessionType ?? 'work')
+  const [completedPomodoros, setCompletedPomodoros] = useState(restoredSession?.completedPomodoros ?? 0)
+  const [startedAt, setStartedAt] = useState<number | null>(
+    restoredSession?.startedAt ??
+      (restoredSession
+        ? restoredSession.targetTime -
+          (restoredSession.activeDurationMinutes ?? restoredSession.durationMinutes) * 60 * 1000
+        : null),
+  )
+  const [activeDurationMinutes, setActiveDurationMinutes] = useState(
+    restoredSession?.activeDurationMinutes ?? restoredSession?.durationMinutes ?? 45,
+  )
   const [targetTime, setTargetTime] = useState<number | null>(restoredSession?.targetTime ?? null)
-  const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    restoredSession ? Math.max(0, Math.ceil((restoredSession.targetTime - Date.now()) / 1000)) : 0,
+  )
+  const [currentPosition, setCurrentPosition] = useState<Position | null>(() => {
+    if (!restoredSession) {
+      return null
+    }
+
+    const sessionStartedAt =
+      restoredSession.startedAt ??
+      restoredSession.targetTime -
+        (restoredSession.activeDurationMinutes ?? restoredSession.durationMinutes) * 60 * 1000
+    const sessionDurationMs =
+      (restoredSession.activeDurationMinutes ?? restoredSession.durationMinutes) * 60 * 1000
+    const progressRatio = sessionDurationMs > 0 ? (Date.now() - sessionStartedAt) / sessionDurationMs : 0
+    return getFlightPosition(restoredSession.selectedCandidate, progressRatio)
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState(
     restoredSession
       ? '前回のフライトタイマーを復元しました。'
-      : '作業時間を設定して、同じ時間で着陸しそうな便を探せます。',
+      : '時間を決めて、同じ頃に着きそうな便を探せます。',
   )
   const [usingDemoData, setUsingDemoData] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layersRef = useRef<L.LayerGroup | null>(null)
+  const focusedCandidateRef = useRef<string | null>(null)
+  const completedTargetRef = useRef<number | null>(null)
 
   const selectedRegion = useMemo(
     () => regions.find((region) => region.id === regionId) ?? regions[0],
@@ -354,28 +451,66 @@ function App() {
       return 0
     }
 
-    const totalSeconds = durationMinutes * 60
+    const totalSeconds = activeDurationMinutes * 60
     return Math.min(100, Math.max(0, ((totalSeconds - remainingSeconds) / totalSeconds) * 100))
-  }, [durationMinutes, remainingSeconds, selectedCandidate, targetTime])
+  }, [activeDurationMinutes, remainingSeconds, selectedCandidate, targetTime])
+
+  const plannedDurationMinutes = getSessionDurationMinutes(sessionType, durationMinutes)
+
+  const completeCurrentSession = useCallback(() => {
+    if (!selectedCandidate) {
+      return
+    }
+
+    setCurrentPosition(getFlightPosition(selectedCandidate, 1))
+    setTargetTime(null)
+    setStartedAt(null)
+    setRemainingSeconds(0)
+    sendCompletionNotification(sessionType)
+    window.localStorage.removeItem('flight-focus-session')
+
+    if (sessionType === 'work') {
+      const nextCompletedPomodoros = completedPomodoros + 1
+      const nextSessionType: SessionType =
+        nextCompletedPomodoros % longBreakInterval === 0 ? 'longBreak' : 'shortBreak'
+      setCompletedPomodoros(nextCompletedPomodoros)
+      setSessionType(nextSessionType)
+      setActiveDurationMinutes(getSessionDurationMinutes(nextSessionType, durationMinutes))
+      setStatus(
+        nextSessionType === 'longBreak'
+          ? '集中完了。次は長めの休憩です。'
+          : '集中完了。次は短い休憩です。',
+      )
+      return
+    }
+
+    setSessionType('work')
+    setActiveDurationMinutes(durationMinutes)
+    setStatus('休憩完了。次の集中フライトを探せます。')
+  }, [completedPomodoros, durationMinutes, selectedCandidate, sessionType])
 
   useEffect(() => {
-    if (!targetTime) {
+    if (!targetTime || !startedAt || !selectedCandidate) {
       return
     }
 
     const updateRemaining = () => {
       const nextRemainingSeconds = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000))
+      const sessionDurationMs = activeDurationMinutes * 60 * 1000
+      const progressRatio = sessionDurationMs > 0 ? (Date.now() - startedAt) / sessionDurationMs : 1
       setRemainingSeconds(nextRemainingSeconds)
+      setCurrentPosition(getFlightPosition(selectedCandidate, progressRatio))
 
-      if (nextRemainingSeconds === 0) {
-        setStatus('到着予定時刻になりました。おつかれさまでした。')
+      if (nextRemainingSeconds === 0 && completedTargetRef.current !== targetTime) {
+        completedTargetRef.current = targetTime
+        completeCurrentSession()
       }
     }
 
     updateRemaining()
     const intervalId = window.setInterval(updateRemaining, 1000)
     return () => window.clearInterval(intervalId)
-  }, [targetTime])
+  }, [activeDurationMinutes, completeCurrentSession, selectedCandidate, startedAt, targetTime])
 
   useEffect(() => {
     if (!selectedCandidate || !targetTime) {
@@ -384,9 +519,17 @@ function App() {
 
     window.localStorage.setItem(
       'flight-focus-session',
-      JSON.stringify({ selectedCandidate, targetTime, durationMinutes }),
+      JSON.stringify({
+        selectedCandidate,
+        targetTime,
+        durationMinutes,
+        startedAt,
+        activeDurationMinutes,
+        sessionType,
+        completedPomodoros,
+      }),
     )
-  }, [durationMinutes, selectedCandidate, targetTime])
+  }, [activeDurationMinutes, completedPomodoros, durationMinutes, selectedCandidate, sessionType, startedAt, targetTime])
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) {
@@ -398,13 +541,13 @@ function App() {
       attributionControl: false,
     }).setView([35.7, 139.7], 5)
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 18,
     }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     L.control
       .attribution({ position: 'bottomleft', prefix: false })
-      .addAttribution('&copy; OpenStreetMap contributors')
+      .addAttribution('Tiles &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community')
       .addTo(map)
 
     const layers = L.layerGroup().addTo(map)
@@ -424,12 +567,15 @@ function App() {
     const candidate = selectedCandidate ?? candidates[0]
     if (!candidate) {
       map.setView([35.7, 139.7], 4)
+      focusedCandidateRef.current = null
       return
     }
 
+    const position = selectedCandidate && currentPosition ? currentPosition : { lat: candidate.lat, lon: candidate.lon }
+
     const planeIcon = createPlaneIcon()
     const airportIcon = createAirportIcon()
-    L.marker([candidate.lat, candidate.lon], { icon: planeIcon, rotationAngle: candidate.heading } as L.MarkerOptions)
+    L.marker([position.lat, position.lon], { icon: planeIcon, rotationAngle: candidate.heading } as L.MarkerOptions)
       .bindPopup(`${candidate.callsign} / ${candidate.originCountry}`)
       .addTo(layers)
     L.marker([candidate.airport.lat, candidate.airport.lon], { icon: airportIcon })
@@ -437,23 +583,31 @@ function App() {
       .addTo(layers)
     L.polyline(
       [
-        [candidate.lat, candidate.lon],
-        [candidate.projectedLat, candidate.projectedLon],
+        [position.lat, position.lon],
         [candidate.airport.lat, candidate.airport.lon],
       ],
-      { color: '#1f8a70', weight: 3, opacity: 0.85, dashArray: '8 8' },
+      { color: '#ffffff', weight: 3, opacity: 0.9, dashArray: '8 8' },
     ).addTo(layers)
 
-    const bounds = L.latLngBounds([
-      [candidate.lat, candidate.lon],
-      [candidate.airport.lat, candidate.airport.lon],
-    ])
-    map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 8 })
-  }, [candidates, selectedCandidate])
+    const focusKey = `${candidate.icao24}-${candidate.airport.code}`
+    if (focusedCandidateRef.current !== focusKey) {
+      const bounds = L.latLngBounds([
+        [position.lat, position.lon],
+        [candidate.airport.lat, candidate.airport.lon],
+      ])
+      map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 8 })
+      focusedCandidateRef.current = focusKey
+    }
+  }, [candidates, currentPosition, selectedCandidate])
 
   const searchFlights = async () => {
     setIsLoading(true)
     setUsingDemoData(false)
+    if (!targetTime) {
+      setSelectedCandidate(null)
+      setCurrentPosition(null)
+      focusedCandidateRef.current = null
+    }
     setStatus('OpenSky Networkからライブ航空機データを取得しています。')
 
     const params = new URLSearchParams(
@@ -467,7 +621,7 @@ function App() {
       }
 
       const data = (await response.json()) as { states?: OpenSkyState[]; time?: number }
-      const nextCandidates = findCandidates(data.states ?? [], durationMinutes)
+      const nextCandidates = findCandidates(data.states ?? [], plannedDurationMinutes)
       setCandidates(nextCandidates)
       const responseTime = data.time ? data.time * 1000 : new Date().getTime()
       setLastUpdated(new Date(responseTime))
@@ -475,7 +629,7 @@ function App() {
       if (nextCandidates.length === 0) {
         setStatus('条件に近い便が見つかりませんでした。地域を変えるか、時間を少し長めにしてください。')
       } else {
-        setStatus(`${nextCandidates.length}件の候補を見つけました。目的地は無料データからの推定です。`)
+        setStatus(`${nextCandidates.length}件の候補を見つけました。`)
       }
     } catch {
       setCandidates(createDemoCandidates())
@@ -488,17 +642,29 @@ function App() {
   }
 
   const startSession = (candidate: Candidate) => {
-    const nextTargetTime = new Date().getTime() + durationMinutes * 60 * 1000
+    const nextDurationMinutes = getSessionDurationMinutes(sessionType, durationMinutes)
+    const nextStartedAt = new Date().getTime()
+    const nextTargetTime = nextStartedAt + nextDurationMinutes * 60 * 1000
     setSelectedCandidate(candidate)
+    setStartedAt(nextStartedAt)
+    setActiveDurationMinutes(nextDurationMinutes)
     setTargetTime(nextTargetTime)
-    setRemainingSeconds(durationMinutes * 60)
-    setStatus(`${candidate.callsign} と一緒に ${candidate.airport.city} へ向かっています。`)
+    setRemainingSeconds(nextDurationMinutes * 60)
+    setCurrentPosition({ lat: candidate.lat, lon: candidate.lon })
+    completedTargetRef.current = null
+    setStatus(`${getSessionLabel(sessionType)}: ${candidate.callsign} と ${candidate.airport.city} へ。`)
   }
 
   const stopSession = () => {
     setSelectedCandidate(null)
     setTargetTime(null)
+    setStartedAt(null)
     setRemainingSeconds(0)
+    setCurrentPosition(null)
+    setSessionType('work')
+    setCompletedPomodoros(0)
+    setActiveDurationMinutes(durationMinutes)
+    completedTargetRef.current = null
     window.localStorage.removeItem('flight-focus-session')
     setStatus('セッションを停止しました。次のフライトを探せます。')
   }
@@ -513,37 +679,27 @@ function App() {
     setStatus(permission === 'granted' ? '到着通知を有効にしました。' : '通知は許可されませんでした。')
   }
 
-  useEffect(() => {
-    if (remainingSeconds !== 0 || !selectedCandidate || !('Notification' in window)) {
-      return
-    }
-
-    if (Notification.permission === 'granted') {
-      new Notification('Flight Focus Timer', {
-        body: `${selectedCandidate.callsign} が ${selectedCandidate.airport.city} に到着予定です。`,
-      })
-    }
-  }, [remainingSeconds, selectedCandidate])
-
   return (
     <main className="app-shell">
       <section className="control-panel" aria-label="Flight focus timer controls">
-        <div className="brand-row">
-          <div className="brand-mark">
-            <Plane size={22} aria-hidden="true" />
-          </div>
-          <div>
-            <p className="eyebrow">Flight Focus Timer</p>
-            <h1>到着まで、一緒に集中する。</h1>
-          </div>
-        </div>
+        <header className="brand-row">
+          <p className="eyebrow">Flight Focus</p>
+          <h1>到着まで集中する。</h1>
+        </header>
 
         <div className="timer-block">
           <div className="timer-label">
             <Clock size={18} aria-hidden="true" />
-            {selectedCandidate ? `${selectedCandidate.callsign} to ${selectedCandidate.airport.code}` : 'Ready for departure'}
+            {getSessionLabel(sessionType)}
           </div>
-          <div className="timer-value">{selectedCandidate ? formatDuration(remainingSeconds) : formatDuration(durationMinutes * 60)}</div>
+          <div className="timer-value">
+            {targetTime ? formatDuration(remainingSeconds) : formatDuration(plannedDurationMinutes * 60)}
+          </div>
+          <div className="timer-meta">
+            <span>{selectedCandidate ? `${selectedCandidate.callsign} to ${selectedCandidate.airport.code}` : 'Ready'}</span>
+            <span>{completedPomodoros % longBreakInterval}/{longBreakInterval}</span>
+            <span>{getNextSessionLabel(sessionType, completedPomodoros)}</span>
+          </div>
           <div className="progress-track" aria-hidden="true">
             <span style={{ width: `${progress}%` }} />
           </div>
@@ -609,11 +765,6 @@ function App() {
                 <MapPin size={15} aria-hidden="true" />
                 {candidate.airport.city} / {candidate.airport.code}
               </span>
-              <span className="candidate-meta">
-                <span>{Math.round(candidate.velocity * 3.6)} km/h</span>
-                <span>{Math.round(candidate.altitude).toLocaleString()} m</span>
-                <span>誤差 {Math.round(candidate.distanceToAirportKm)} km</span>
-              </span>
             </button>
           ))}
         </div>
@@ -634,12 +785,6 @@ function App() {
           </div>
         </div>
         <div ref={mapContainerRef} className="flight-map" />
-        <div className="map-footer">
-          <span>
-            <Compass size={16} aria-hidden="true" />
-            無料データでは目的地が直接取れないため、進行方向と速度から到着空港を推定しています。
-          </span>
-        </div>
       </section>
     </main>
   )

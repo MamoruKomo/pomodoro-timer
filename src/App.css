@@ -1,7 +1,7 @@
 .app-shell {
   min-height: 100svh;
   display: grid;
-  grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
   color: var(--text);
   background: var(--bg);
 }
@@ -9,37 +9,26 @@
 .control-panel {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 28px;
+  gap: 18px;
+  padding: 22px;
   border-right: 1px solid var(--border);
-  background: #f7f4ee;
+  background: #f6f5f1;
   overflow-y: auto;
 }
 
 .brand-row,
 .timer-label,
+.timer-meta,
 .action-row,
 .candidate-destination,
-.candidate-meta,
 .map-toolbar,
-.map-meta,
-.map-footer span {
+.map-meta {
   display: flex;
   align-items: center;
 }
 
 .brand-row {
-  gap: 14px;
-}
-
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: #1f8a70;
-  border-radius: 8px;
+  display: block;
 }
 
 .eyebrow {
@@ -58,7 +47,7 @@ h2 {
 }
 
 h1 {
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1.18;
 }
 
@@ -82,17 +71,33 @@ h2 {
 }
 
 .timer-value {
-  margin-top: 12px;
+  margin-top: 10px;
   color: #151a1f;
-  font-size: 52px;
+  font-size: 50px;
   font-weight: 800;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
+.timer-meta {
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  color: #687079;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.timer-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .progress-track {
   height: 10px;
-  margin-top: 18px;
+  margin-top: 14px;
   overflow: hidden;
   background: #e5e0d6;
   border-radius: 999px;
@@ -205,10 +210,10 @@ select {
 }
 
 .status-line {
-  min-height: 42px;
+  min-height: 22px;
   margin: 0;
   color: #59636d;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -220,8 +225,8 @@ select {
 .candidate-card {
   width: 100%;
   display: grid;
-  gap: 9px;
-  padding: 14px;
+  gap: 8px;
+  padding: 13px;
   text-align: left;
   color: #263238;
   background: #fff;
@@ -247,13 +252,12 @@ select {
 }
 
 .candidate-main span,
-.candidate-meta {
+.candidate-destination {
   color: #687079;
   font-size: 13px;
 }
 
-.candidate-destination,
-.candidate-meta {
+.candidate-destination {
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -261,21 +265,28 @@ select {
 .map-panel {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr) auto;
-  background: #d9e3df;
+  grid-template-rows: auto minmax(360px, 1fr);
+  background: #182222;
 }
 
 .map-toolbar {
   justify-content: space-between;
   gap: 18px;
-  padding: 20px 24px;
-  background: rgba(255, 255, 255, 0.88);
-  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
+  color: #eef5f2;
+  background: rgba(17, 24, 28, 0.82);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.map-toolbar .eyebrow,
+.map-toolbar h2 {
+  color: inherit;
 }
 
 .map-meta {
   gap: 12px;
-  color: #56616b;
+  color: #dce7e2;
   font-size: 13px;
   white-space: nowrap;
 }
@@ -288,8 +299,8 @@ select {
 
 .source-pill {
   padding: 6px 9px;
-  color: #fff;
-  background: #1f8a70;
+  color: #12322d;
+  background: #bdf4de;
   border-radius: 999px;
   font-weight: 800;
 }
@@ -303,23 +314,11 @@ select {
   isolation: isolate;
 }
 
-.map-footer {
-  padding: 12px 18px;
-  color: #42505a;
-  background: rgba(255, 255, 255, 0.9);
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.map-footer span {
-  gap: 8px;
-}
-
 .plane-marker {
   display: grid;
   place-items: center;
   color: #fff;
-  background: #154b59;
+  background: #1f8a70;
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
@@ -333,7 +332,7 @@ select {
 .airport-marker {
   display: grid;
   place-items: center;
-  background: #1f8a70;
+  background: #ffffff;
   border: 3px solid #fff;
   border-radius: 50%;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
@@ -370,7 +369,13 @@ select {
   }
 
   .timer-value {
-    font-size: 42px;
+    font-size: 40px;
+  }
+
+  .timer-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .map-toolbar {
