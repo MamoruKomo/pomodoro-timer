@@ -619,6 +619,7 @@ function App() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(
     restoredSession?.selectedCandidate ?? null,
   )
+  const [pendingCandidate, setPendingCandidate] = useState<Candidate | null>(null)
   const [sessionType, setSessionType] = useState<SessionType>(restoredSession?.sessionType ?? 'work')
   const [completedPomodoros, setCompletedPomodoros] = useState(restoredSession?.completedPomodoros ?? 0)
   const [startedAt, setStartedAt] = useState<number | null>(
@@ -689,6 +690,7 @@ function App() {
     setDurationMinutes(clampedMinutes)
   }
   const selectedAircraftId = selectedCandidate?.icao24
+  const displayCandidate = selectedCandidate ?? pendingCandidate
 
   useEffect(() => {
     currentPositionRef.current = currentPosition
@@ -863,7 +865,7 @@ function App() {
       return
     }
 
-    const candidate = selectedCandidate ?? candidates[0]
+    const candidate = displayCandidate ?? candidates[0]
     if (!candidate) {
       layers.clearLayers()
       planeMarkerRef.current = null
@@ -923,7 +925,7 @@ function App() {
       map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: routeFitMaxZoom })
       focusedCandidateRef.current = focusKey
     }
-  }, [candidates, currentPosition, selectedCandidate, targetTime])
+  }, [candidates, currentPosition, displayCandidate, selectedCandidate, targetTime])
 
   const searchFlights = async () => {
     const now = new Date().getTime()
@@ -940,6 +942,7 @@ function App() {
     lastAircraftSearchRef.current = now
     if (!targetTime) {
       setSelectedCandidate(null)
+      setPendingCandidate(null)
       setCurrentPosition(null)
       focusedCandidateRef.current = null
     }
@@ -972,11 +975,24 @@ function App() {
     }
   }
 
+  const chooseCandidate = (candidate: Candidate) => {
+    if (targetTime) {
+      return
+    }
+
+    setPendingCandidate(candidate)
+    setCurrentPosition(null)
+    currentPositionRef.current = null
+    motionPlanRef.current = null
+    setStatus(`${candidate.callsign} を選択中です。決定するとタイマーを開始します。`)
+  }
+
   const startSession = (candidate: Candidate) => {
     const nextDurationMinutes = getSessionDurationMinutes(sessionType, durationMinutes)
     const nextStartedAt = new Date().getTime()
     const nextTargetTime = nextStartedAt + nextDurationMinutes * 60 * 1000
     setSelectedCandidate(candidate)
+    setPendingCandidate(null)
     setStartedAt(nextStartedAt)
     setActiveDurationMinutes(nextDurationMinutes)
     setTargetTime(nextTargetTime)
@@ -992,6 +1008,7 @@ function App() {
 
   const stopSession = () => {
     setSelectedCandidate(null)
+    setPendingCandidate(null)
     setTargetTime(null)
     setStartedAt(null)
     setRemainingSeconds(0)
@@ -1026,7 +1043,7 @@ function App() {
           </div>
           <h1>到着まで集中する。</h1>
           <p className="route-line">
-            {selectedCandidate ? `${selectedCandidate.callsign} / ${selectedCandidate.airport.code}` : 'STANDBY / SELECT FLIGHT'}
+            {displayCandidate ? `${displayCandidate.callsign} / ${displayCandidate.airport.code}` : 'STANDBY / SELECT FLIGHT'}
           </p>
         </header>
 
@@ -1040,18 +1057,18 @@ function App() {
             {targetTime ? formatDuration(remainingSeconds) : formatDuration(plannedDurationMinutes * 60)}
           </div>
           <div className="timer-meta">
-            <span>CALLSIGN {selectedCandidate ? selectedCandidate.callsign : 'READY'}</span>
+            <span>CALLSIGN {displayCandidate ? displayCandidate.callsign : 'READY'}</span>
             <span>CYCLE {completedPomodoros % longBreakInterval}/{longBreakInterval}</span>
             <span>{getNextSessionLabel(sessionType, completedPomodoros).toUpperCase()}</span>
           </div>
           <div className="instrument-row" aria-label="Flight instruments">
             <span>
               <strong>HDG</strong>
-              {selectedCandidate ? Math.round(selectedCandidate.heading).toString().padStart(3, '0') : '---'}
+              {displayCandidate ? Math.round(displayCandidate.heading).toString().padStart(3, '0') : '---'}
             </span>
             <span>
               <strong>DEST</strong>
-              {selectedCandidate ? selectedCandidate.airport.code : '---'}
+              {displayCandidate ? displayCandidate.airport.code : '---'}
             </span>
             <span>
               <strong>ETA</strong>
@@ -1143,6 +1160,12 @@ function App() {
             {isLoading ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}
             便を探す
           </button>
+          {pendingCandidate && !targetTime && (
+            <button type="button" className="confirm-button" onClick={() => startSession(pendingCandidate)}>
+              <Plane size={18} aria-hidden="true" />
+              決定して開始
+            </button>
+          )}
           <button type="button" className="icon-button" onClick={enableNotifications} title="到着通知を有効にする">
             <Bell size={18} aria-hidden="true" />
           </button>
@@ -1159,9 +1182,9 @@ function App() {
           {candidates.map((candidate) => (
             <button
               type="button"
-              className={`candidate-card ${selectedCandidate?.icao24 === candidate.icao24 ? 'is-selected' : ''}`}
+              className={`candidate-card ${selectedCandidate?.icao24 === candidate.icao24 ? 'is-selected' : ''} ${pendingCandidate?.icao24 === candidate.icao24 ? 'is-pending' : ''}`}
               key={candidate.icao24}
-              onClick={() => startSession(candidate)}
+              onClick={() => chooseCandidate(candidate)}
             >
               <span className="flight-strip-code">{candidate.airport.code}</span>
               <span className="candidate-main">
@@ -1184,7 +1207,7 @@ function App() {
         <div className="map-toolbar">
           <div>
             <p className="eyebrow">Satellite nav</p>
-            <h2>{selectedCandidate ? selectedCandidate.airport.name : 'Select a flight'}</h2>
+            <h2>{displayCandidate ? displayCandidate.airport.name : 'Select a flight'}</h2>
           </div>
           <div className="map-meta">
             <span className={usingDemoData ? 'source-pill demo' : 'source-pill'}>{usingDemoData ? 'Demo' : 'ADS-B live'}</span>

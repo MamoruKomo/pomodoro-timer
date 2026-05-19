@@ -475,6 +475,7 @@ select {
 }
 
 .primary-button,
+.confirm-button,
 .secondary-button,
 .icon-button {
   min-height: 40px;
@@ -494,7 +495,15 @@ select {
   font-weight: 800;
 }
 
-.primary-button:disabled {
+.confirm-button {
+  flex: 1;
+  color: #161916;
+  background: #ffcf66;
+  font-weight: 900;
+}
+
+.primary-button:disabled,
+.confirm-button:disabled {
   cursor: wait;
   opacity: 0.7;
 }
@@ -555,10 +564,26 @@ select {
   cursor: pointer;
 }
 
+.candidate-card.is-pending,
 .candidate-card.is-selected,
 .candidate-card:hover {
   border-color: #62d99a;
   box-shadow: 0 10px 24px rgba(98, 217, 154, 0.16);
+}
+
+.candidate-card.is-pending {
+  background: #1f2d25;
+  border-color: #ffcf66;
+  box-shadow: 0 10px 26px rgba(255, 207, 102, 0.16);
+}
+
+.candidate-card.is-pending .flight-strip-code {
+  color: #102017;
+  background: #62d99a;
+}
+
+.candidate-card.is-selected {
+  background: #173020;
 }
 
 .flight-strip-code {
