@@ -5,7 +5,9 @@ import {
   Clock,
   Loader2,
   MapPin,
+  Minus,
   Plane,
+  Plus,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -78,6 +80,10 @@ type StoredSession = {
 const shortBreakMinutes = 5
 const longBreakMinutes = 15
 const longBreakInterval = 4
+const minWorkDurationMinutes = 15
+const maxWorkDurationMinutes = 240
+const durationStepMinutes = 5
+const durationPresets = [25, 45, 60, 90]
 const aircraftSearchCooldownMs = 10_000
 const aircraftSearchTimeoutMs = 18_000
 const adsbSearchRadiusNm = 250
@@ -625,6 +631,13 @@ function App() {
   }, [activeDurationMinutes, remainingSeconds, selectedCandidate, targetTime])
 
   const plannedDurationMinutes = getSessionDurationMinutes(sessionType, durationMinutes)
+  const durationDialProgress =
+    ((durationMinutes - minWorkDurationMinutes) / (maxWorkDurationMinutes - minWorkDurationMinutes)) * 100
+  const setWorkDuration = (nextMinutes: number) => {
+    const roundedMinutes = Math.round(nextMinutes / durationStepMinutes) * durationStepMinutes
+    const clampedMinutes = Math.max(minWorkDurationMinutes, Math.min(maxWorkDurationMinutes, roundedMinutes))
+    setDurationMinutes(clampedMinutes)
+  }
   const selectedAircraftId = selectedCandidate?.icao24
 
   useEffect(() => {
@@ -1001,20 +1014,74 @@ function App() {
         </div>
 
         <div className="search-grid">
-          <label>
-            作業時間
-            <div className="input-with-unit">
-              <input
-                min="15"
-                max="240"
-                step="5"
-                type="number"
-                value={durationMinutes}
-                onChange={(event) => setDurationMinutes(Number(event.target.value))}
-              />
-              <span>min</span>
+          <section className="duration-card" aria-labelledby="duration-heading">
+            <div className="duration-card-header">
+              <span id="duration-heading">作業時間</span>
+              <strong>{plannedDurationMinutes} min</strong>
             </div>
-          </label>
+
+            <div className="duration-control-row">
+              <button
+                type="button"
+                className="duration-step-button"
+                onClick={() => setWorkDuration(durationMinutes - durationStepMinutes)}
+                aria-label="作業時間を5分短くする"
+              >
+                <Minus size={16} aria-hidden="true" />
+              </button>
+              <label className="duration-input-shell">
+                <input
+                  min={minWorkDurationMinutes}
+                  max={maxWorkDurationMinutes}
+                  step={durationStepMinutes}
+                  type="number"
+                  value={durationMinutes}
+                  onChange={(event) => setWorkDuration(Number(event.target.value))}
+                  aria-label="作業時間を分で入力"
+                />
+                <span>MIN</span>
+              </label>
+              <button
+                type="button"
+                className="duration-step-button"
+                onClick={() => setWorkDuration(durationMinutes + durationStepMinutes)}
+                aria-label="作業時間を5分長くする"
+              >
+                <Plus size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            <input
+              className="duration-slider"
+              min={minWorkDurationMinutes}
+              max={maxWorkDurationMinutes}
+              step={durationStepMinutes}
+              type="range"
+              value={durationMinutes}
+              onChange={(event) => setWorkDuration(Number(event.target.value))}
+              aria-label="作業時間スライダー"
+            />
+            <div className="duration-scale" aria-hidden="true">
+              <span>15</span>
+              <span>120</span>
+              <span>240</span>
+            </div>
+            <div className="duration-presets" aria-label="作業時間プリセット">
+              {durationPresets.map((preset) => (
+                <button
+                  type="button"
+                  className={durationMinutes === preset ? 'is-active' : ''}
+                  key={preset}
+                  onClick={() => setWorkDuration(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+            <div className="duration-readout" aria-hidden="true">
+              <span style={{ width: `${durationDialProgress}%` }} />
+            </div>
+          </section>
           <div className="auto-search-panel">
             <span>SEARCH</span>
             <strong>GLOBAL AUTO</strong>
