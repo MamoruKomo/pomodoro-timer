@@ -13,10 +13,13 @@ import {
 } from 'lucide-react'
 import './App.css'
 
+type Region = 'Asia' | 'Europe' | 'North America' | 'Middle East' | 'Oceania'
+
 type Airport = {
   code: string
   name: string
   city: string
+  region: Region
   lat: number
   lon: number
 }
@@ -84,6 +87,8 @@ const minWorkDurationMinutes = 15
 const maxWorkDurationMinutes = 240
 const durationStepMinutes = 5
 const durationPresets = [25, 45, 60, 90]
+const requiredCandidateRegions: Region[] = ['Asia', 'Europe', 'North America', 'Middle East', 'Oceania']
+const maxCandidateCount = 6
 const aircraftSearchCooldownMs = 10_000
 const aircraftSearchTimeoutMs = 18_000
 const adsbSearchRadiusNm = 250
@@ -96,80 +101,118 @@ const fallbackAirportDistanceKm = 850
 const aircraftApiBase = import.meta.env.DEV ? '/api/airplanes' : 'https://api.airplanes.live'
 
 const airports: Airport[] = [
-  { code: 'HND', name: 'Tokyo Haneda', city: 'Tokyo', lat: 35.5494, lon: 139.7798 },
-  { code: 'NRT', name: 'Narita', city: 'Tokyo', lat: 35.772, lon: 140.3929 },
-  { code: 'KIX', name: 'Kansai', city: 'Osaka', lat: 34.4347, lon: 135.244 },
-  { code: 'ITM', name: 'Itami', city: 'Osaka', lat: 34.7855, lon: 135.4382 },
-  { code: 'CTS', name: 'New Chitose', city: 'Sapporo', lat: 42.7752, lon: 141.6923 },
-  { code: 'FUK', name: 'Fukuoka', city: 'Fukuoka', lat: 33.5859, lon: 130.4507 },
-  { code: 'OKA', name: 'Naha', city: 'Okinawa', lat: 26.1958, lon: 127.6459 },
-  { code: 'ICN', name: 'Incheon', city: 'Seoul', lat: 37.4602, lon: 126.4407 },
-  { code: 'GMP', name: 'Gimpo', city: 'Seoul', lat: 37.5583, lon: 126.7906 },
-  { code: 'TPE', name: 'Taoyuan', city: 'Taipei', lat: 25.0797, lon: 121.2342 },
-  { code: 'LHR', name: 'Heathrow', city: 'London', lat: 51.47, lon: -0.4543 },
-  { code: 'LGW', name: 'Gatwick', city: 'London', lat: 51.1537, lon: -0.1821 },
-  { code: 'CDG', name: 'Charles de Gaulle', city: 'Paris', lat: 49.0097, lon: 2.5479 },
-  { code: 'ORY', name: 'Orly', city: 'Paris', lat: 48.7233, lon: 2.3794 },
-  { code: 'AMS', name: 'Schiphol', city: 'Amsterdam', lat: 52.3105, lon: 4.7683 },
-  { code: 'FRA', name: 'Frankfurt', city: 'Frankfurt', lat: 50.0379, lon: 8.5622 },
-  { code: 'MUC', name: 'Munich', city: 'Munich', lat: 48.3538, lon: 11.7861 },
-  { code: 'MAD', name: 'Barajas', city: 'Madrid', lat: 40.4983, lon: -3.5676 },
-  { code: 'BCN', name: 'El Prat', city: 'Barcelona', lat: 41.2974, lon: 2.0833 },
-  { code: 'FCO', name: 'Fiumicino', city: 'Rome', lat: 41.8003, lon: 12.2389 },
-  { code: 'ZRH', name: 'Zurich', city: 'Zurich', lat: 47.4581, lon: 8.5555 },
-  { code: 'JFK', name: 'John F. Kennedy', city: 'New York', lat: 40.6413, lon: -73.7781 },
-  { code: 'EWR', name: 'Newark', city: 'New York', lat: 40.6895, lon: -74.1745 },
-  { code: 'BOS', name: 'Logan', city: 'Boston', lat: 42.3656, lon: -71.0096 },
-  { code: 'MIA', name: 'Miami', city: 'Miami', lat: 25.7959, lon: -80.287 },
-  { code: 'ORD', name: "O'Hare", city: 'Chicago', lat: 41.9742, lon: -87.9073 },
-  { code: 'ATL', name: 'Hartsfield-Jackson', city: 'Atlanta', lat: 33.6407, lon: -84.4277 },
-  { code: 'LAX', name: 'Los Angeles', city: 'Los Angeles', lat: 33.9416, lon: -118.4085 },
-  { code: 'SFO', name: 'San Francisco', city: 'San Francisco', lat: 37.6213, lon: -122.379 },
-  { code: 'SEA', name: 'Seattle-Tacoma', city: 'Seattle', lat: 47.4502, lon: -122.3088 },
-  { code: 'LAS', name: 'Harry Reid', city: 'Las Vegas', lat: 36.084, lon: -115.1537 },
-  { code: 'DEN', name: 'Denver', city: 'Denver', lat: 39.8561, lon: -104.6737 },
+  { code: 'HND', name: 'Tokyo Haneda', city: 'Tokyo', region: 'Asia', lat: 35.5494, lon: 139.7798 },
+  { code: 'NRT', name: 'Narita', city: 'Tokyo', region: 'Asia', lat: 35.772, lon: 140.3929 },
+  { code: 'KIX', name: 'Kansai', city: 'Osaka', region: 'Asia', lat: 34.4347, lon: 135.244 },
+  { code: 'ITM', name: 'Itami', city: 'Osaka', region: 'Asia', lat: 34.7855, lon: 135.4382 },
+  { code: 'CTS', name: 'New Chitose', city: 'Sapporo', region: 'Asia', lat: 42.7752, lon: 141.6923 },
+  { code: 'FUK', name: 'Fukuoka', city: 'Fukuoka', region: 'Asia', lat: 33.5859, lon: 130.4507 },
+  { code: 'OKA', name: 'Naha', city: 'Okinawa', region: 'Asia', lat: 26.1958, lon: 127.6459 },
+  { code: 'ICN', name: 'Incheon', city: 'Seoul', region: 'Asia', lat: 37.4602, lon: 126.4407 },
+  { code: 'GMP', name: 'Gimpo', city: 'Seoul', region: 'Asia', lat: 37.5583, lon: 126.7906 },
+  { code: 'TPE', name: 'Taoyuan', city: 'Taipei', region: 'Asia', lat: 25.0797, lon: 121.2342 },
+  { code: 'SIN', name: 'Changi', city: 'Singapore', region: 'Asia', lat: 1.3644, lon: 103.9915 },
+  { code: 'BKK', name: 'Suvarnabhumi', city: 'Bangkok', region: 'Asia', lat: 13.69, lon: 100.7501 },
+  { code: 'LHR', name: 'Heathrow', city: 'London', region: 'Europe', lat: 51.47, lon: -0.4543 },
+  { code: 'LGW', name: 'Gatwick', city: 'London', region: 'Europe', lat: 51.1537, lon: -0.1821 },
+  { code: 'CDG', name: 'Charles de Gaulle', city: 'Paris', region: 'Europe', lat: 49.0097, lon: 2.5479 },
+  { code: 'ORY', name: 'Orly', city: 'Paris', region: 'Europe', lat: 48.7233, lon: 2.3794 },
+  { code: 'AMS', name: 'Schiphol', city: 'Amsterdam', region: 'Europe', lat: 52.3105, lon: 4.7683 },
+  { code: 'FRA', name: 'Frankfurt', city: 'Frankfurt', region: 'Europe', lat: 50.0379, lon: 8.5622 },
+  { code: 'MUC', name: 'Munich', city: 'Munich', region: 'Europe', lat: 48.3538, lon: 11.7861 },
+  { code: 'MAD', name: 'Barajas', city: 'Madrid', region: 'Europe', lat: 40.4983, lon: -3.5676 },
+  { code: 'BCN', name: 'El Prat', city: 'Barcelona', region: 'Europe', lat: 41.2974, lon: 2.0833 },
+  { code: 'FCO', name: 'Fiumicino', city: 'Rome', region: 'Europe', lat: 41.8003, lon: 12.2389 },
+  { code: 'ZRH', name: 'Zurich', city: 'Zurich', region: 'Europe', lat: 47.4581, lon: 8.5555 },
+  { code: 'DXB', name: 'Dubai International', city: 'Dubai', region: 'Middle East', lat: 25.2532, lon: 55.3657 },
+  { code: 'DOH', name: 'Hamad International', city: 'Doha', region: 'Middle East', lat: 25.2731, lon: 51.6081 },
+  { code: 'AUH', name: 'Zayed International', city: 'Abu Dhabi', region: 'Middle East', lat: 24.433, lon: 54.6511 },
+  { code: 'RUH', name: 'King Khalid', city: 'Riyadh', region: 'Middle East', lat: 24.9576, lon: 46.6988 },
+  { code: 'JFK', name: 'John F. Kennedy', city: 'New York', region: 'North America', lat: 40.6413, lon: -73.7781 },
+  { code: 'EWR', name: 'Newark', city: 'New York', region: 'North America', lat: 40.6895, lon: -74.1745 },
+  { code: 'BOS', name: 'Logan', city: 'Boston', region: 'North America', lat: 42.3656, lon: -71.0096 },
+  { code: 'MIA', name: 'Miami', city: 'Miami', region: 'North America', lat: 25.7959, lon: -80.287 },
+  { code: 'ORD', name: "O'Hare", city: 'Chicago', region: 'North America', lat: 41.9742, lon: -87.9073 },
+  { code: 'ATL', name: 'Hartsfield-Jackson', city: 'Atlanta', region: 'North America', lat: 33.6407, lon: -84.4277 },
+  { code: 'LAX', name: 'Los Angeles', city: 'Los Angeles', region: 'North America', lat: 33.9416, lon: -118.4085 },
+  { code: 'SFO', name: 'San Francisco', city: 'San Francisco', region: 'North America', lat: 37.6213, lon: -122.379 },
+  { code: 'SEA', name: 'Seattle-Tacoma', city: 'Seattle', region: 'North America', lat: 47.4502, lon: -122.3088 },
+  { code: 'LAS', name: 'Harry Reid', city: 'Las Vegas', region: 'North America', lat: 36.084, lon: -115.1537 },
+  { code: 'DEN', name: 'Denver', city: 'Denver', region: 'North America', lat: 39.8561, lon: -104.6737 },
+  { code: 'SYD', name: 'Sydney Kingsford Smith', city: 'Sydney', region: 'Oceania', lat: -33.9399, lon: 151.1753 },
+  { code: 'MEL', name: 'Melbourne', city: 'Melbourne', region: 'Oceania', lat: -37.669, lon: 144.841 },
+  { code: 'BNE', name: 'Brisbane', city: 'Brisbane', region: 'Oceania', lat: -27.3842, lon: 153.1175 },
+  { code: 'AKL', name: 'Auckland', city: 'Auckland', region: 'Oceania', lat: -37.0082, lon: 174.785 },
 ]
 
 const searchAirports = airports
 
+const getAirportByCode = (code: string) => airports.find((airport) => airport.code === code) ?? airports[0]
+
+const selectRegionBalancedCandidates = (rankedCandidates: Candidate[]) => {
+  const selectedCandidates: Candidate[] = []
+  const selectedAircraft = new Set<string>()
+
+  requiredCandidateRegions.forEach((region) => {
+    const regionalCandidate = rankedCandidates.find(
+      (candidate) => candidate.airport.region === region && !selectedAircraft.has(candidate.icao24),
+    )
+
+    if (regionalCandidate) {
+      selectedCandidates.push(regionalCandidate)
+      selectedAircraft.add(regionalCandidate.icao24)
+    }
+  })
+
+  rankedCandidates.forEach((candidate) => {
+    if (selectedCandidates.length >= maxCandidateCount || selectedAircraft.has(candidate.icao24)) {
+      return
+    }
+
+    selectedCandidates.push(candidate)
+    selectedAircraft.add(candidate.icao24)
+  })
+
+  return selectedCandidates
+}
+
 const createDemoCandidates = (): Candidate[] => {
   const currentContactTime = Math.floor(new Date().getTime() / 1000)
 
+  const createDemoCandidate = (
+    icao24: string,
+    callsign: string,
+    originCountry: string,
+    lat: number,
+    lon: number,
+    heading: number,
+    airportCode: string,
+    distanceToAirportKm: number,
+    score: number,
+  ): Candidate => ({
+    icao24,
+    callsign,
+    originCountry,
+    lat,
+    lon,
+    altitude: 7800,
+    velocity: 220,
+    heading,
+    verticalRate: -1.8,
+    airport: getAirportByCode(airportCode),
+    projectedLat: getAirportByCode(airportCode).lat,
+    projectedLon: getAirportByCode(airportCode).lon,
+    distanceToAirportKm,
+    score,
+    lastContact: currentContactTime,
+  })
+
   return [
-    {
-      icao24: 'demo001',
-      callsign: 'SKY402',
-      originCountry: 'Japan',
-      lat: 34.64,
-      lon: 138.12,
-      altitude: 8100,
-      velocity: 226,
-      heading: 64,
-      verticalRate: -2.4,
-      airport: airports[0],
-      projectedLat: 35.52,
-      projectedLon: 139.64,
-      distanceToAirportKm: 15,
-      score: 15,
-      lastContact: currentContactTime,
-    },
-    {
-      icao24: 'demo002',
-      callsign: 'FOCUS18',
-      originCountry: 'United Kingdom',
-      lat: 50.36,
-      lon: 1.12,
-      altitude: 6900,
-      velocity: 210,
-      heading: 292,
-      verticalRate: -1.2,
-      airport: airports[10],
-      projectedLat: 51.36,
-      projectedLon: -0.31,
-      distanceToAirportKm: 18,
-      score: 18,
-      lastContact: currentContactTime,
-    },
+    createDemoCandidate('demo001', 'SKY402', 'Asia demo', 34.64, 138.12, 64, 'HND', 15, 15),
+    createDemoCandidate('demo002', 'EURO18', 'Europe demo', 50.36, 1.12, 292, 'LHR', 18, 18),
+    createDemoCandidate('demo003', 'NOVA73', 'North America demo', 39.82, -74.11, 47, 'JFK', 24, 24),
+    createDemoCandidate('demo004', 'GULF55', 'Middle East demo', 25.62, 54.72, 82, 'DXB', 28, 28),
+    createDemoCandidate('demo005', 'AUS210', 'Oceania demo', -34.38, 150.34, 18, 'SYD', 32, 32),
   ]
 }
 
@@ -452,8 +495,15 @@ const findCandidates = (aircraftList: AdsbAircraft[], durationMinutes: number): 
     (candidate) => candidate.distanceToAirportKm <= preferredAirportDistanceKm,
   )
 
-  return (preferredCandidates.length > 0 ? preferredCandidates : rankedCandidates)
-    .slice(0, 6)
+  const regionBalancedCandidates = selectRegionBalancedCandidates(rankedCandidates)
+  const preferredCandidateIds = new Set(preferredCandidates.map((candidate) => candidate.icao24))
+  const preferredRegionBalancedCandidates = regionBalancedCandidates.filter((candidate) =>
+    preferredCandidateIds.has(candidate.icao24),
+  )
+
+  return preferredRegionBalancedCandidates.length >= requiredCandidateRegions.length
+    ? preferredRegionBalancedCandidates.slice(0, maxCandidateCount)
+    : regionBalancedCandidates
 }
 
 const updateCandidateFromAircraft = (
@@ -1123,7 +1173,7 @@ function App() {
                 {candidate.airport.city} / {candidate.airport.code}
               </span>
               <span className="candidate-route">
-                HDG {Math.round(candidate.heading).toString().padStart(3, '0')} / {Math.round(candidate.distanceToAirportKm)} km
+                {candidate.airport.region ?? 'Global'} / HDG {Math.round(candidate.heading).toString().padStart(3, '0')} / {Math.round(candidate.distanceToAirportKm)} km
               </span>
             </button>
           ))}
