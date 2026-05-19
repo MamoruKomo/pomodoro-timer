@@ -254,8 +254,11 @@ const createMotionPlan = (
 ): MotionPlan => {
   const remainingMs = targetTime ? Math.max(0, targetTime - startedAt) : aircraftPositionRefreshMs
   const motionDurationMs = Math.max(flightPositionUpdateMs, Math.min(aircraftPositionRefreshMs, remainingMs))
-  const projectedDistanceKm = (candidate.velocity * motionDurationMs) / 1000
-  const projected = projectPosition(candidate.lat, candidate.lon, candidate.heading, projectedDistanceKm)
+  const destination = { lat: candidate.airport.lat, lon: candidate.airport.lon }
+  const distanceToDestinationKm = distanceKm(from.lat, from.lon, destination.lat, destination.lon)
+  const projectedDistanceKm = Math.min((candidate.velocity * motionDurationMs) / 1000, distanceToDestinationKm)
+  const headingToDestination = bearingDegrees(from, destination)
+  const projected = projectPosition(from.lat, from.lon, headingToDestination, projectedDistanceKm)
 
   return {
     from,
