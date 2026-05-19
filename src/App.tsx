@@ -256,7 +256,8 @@ const createMotionPlan = (
   const motionDurationMs = Math.max(flightPositionUpdateMs, Math.min(aircraftPositionRefreshMs, remainingMs))
   const destination = { lat: candidate.airport.lat, lon: candidate.airport.lon }
   const distanceToDestinationKm = distanceKm(from.lat, from.lon, destination.lat, destination.lon)
-  const projectedDistanceKm = Math.min((candidate.velocity * motionDurationMs) / 1000, distanceToDestinationKm)
+  const motionRatio = remainingMs > 0 ? motionDurationMs / remainingMs : 1
+  const projectedDistanceKm = distanceToDestinationKm * Math.min(1, motionRatio)
   const headingToDestination = bearingDegrees(from, destination)
   const projected = projectPosition(from.lat, from.lon, headingToDestination, projectedDistanceKm)
 
