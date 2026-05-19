@@ -81,8 +81,9 @@ const longBreakInterval = 4
 const aircraftSearchCooldownMs = 10_000
 const aircraftSearchTimeoutMs = 18_000
 const adsbSearchRadiusNm = 250
-const flightPositionUpdateMs = 250
+const flightPositionUpdateMs = 1_000
 const aircraftPositionRefreshMs = 180_000
+const mapFollowThrottleMs = 4_000
 const routeFitMaxZoom = 8
 const preferredAirportDistanceKm = 180
 const fallbackAirportDistanceKm = 850
@@ -609,6 +610,7 @@ function App() {
   const focusedCandidateRef = useRef<string | null>(null)
   const completedTargetRef = useRef<number | null>(null)
   const lastAircraftSearchRef = useRef<number | null>(null)
+  const lastMapFollowRef = useRef(0)
   const currentPositionRef = useRef<Position | null>(currentPosition)
   const selectedCandidateRef = useRef<Candidate | null>(selectedCandidate)
   const motionPlanRef = useRef<MotionPlan | null>(null)
@@ -844,7 +846,11 @@ function App() {
     setPlaneMarkerBearing(planeMarkerRef.current, position, { lat: candidate.airport.lat, lon: candidate.airport.lon })
 
     if (targetTime && selectedCandidate && currentPosition) {
-      map.panTo([position.lat, position.lon], { animate: true, duration: 0.45, easeLinearity: 0.2 })
+      const now = new Date().getTime()
+      if (now - lastMapFollowRef.current >= mapFollowThrottleMs) {
+        map.panTo([position.lat, position.lon], { animate: true, duration: 1.2, easeLinearity: 0.12 })
+        lastMapFollowRef.current = now
+      }
       focusedCandidateRef.current = focusKey
     } else if (focusedCandidateRef.current !== focusKey) {
       const bounds = L.latLngBounds([
@@ -916,6 +922,7 @@ function App() {
     setCurrentPosition(initialPosition)
     currentPositionRef.current = initialPosition
     motionPlanRef.current = createMotionPlan(candidate, initialPosition, nextStartedAt, nextTargetTime)
+    lastMapFollowRef.current = 0
     completedTargetRef.current = null
     setStatus(`${getSessionLabel(sessionType)}: ${candidate.callsign} と ${candidate.airport.city} へ。`)
   }

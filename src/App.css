@@ -448,7 +448,7 @@ select {
   border: 3px solid #ffffff;
   border-radius: 50%;
   box-shadow: 0 0 0 3px rgba(16, 19, 16, 0.62), 0 10px 24px rgba(0, 0, 0, 0.34);
-  transition: transform 240ms linear;
+  transition: transform 1000ms linear;
   will-change: transform;
 }
 
@@ -459,7 +459,7 @@ select {
   height: 24px;
   transform: rotate(var(--plane-bearing));
   transform-origin: center;
-  transition: transform 240ms linear;
+  transition: transform 1000ms linear;
   will-change: transform;
 }
 
