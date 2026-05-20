@@ -6,11 +6,6 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   server: {
     proxy: {
-      '/api/opensky': {
-        target: 'https://opensky-network.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/opensky/, '/api'),
-      },
       '/api/airplanes': {
         target: 'https://api.airplanes.live',
         changeOrigin: true,
@@ -25,15 +20,42 @@ export default defineConfig({
       manifest: {
         name: 'Flight Focus Timer',
         short_name: 'Flight Focus',
-        description: 'A focus timer that follows a live flight toward an estimated arrival.',
-        theme_color: '#1f8a70',
-        background_color: '#f7f4ee',
+        description: 'A cockpit-style focus timer that follows live ADS-B flights toward arrival.',
+        theme_color: '#161916',
+        background_color: '#161916',
         display: 'standalone',
         start_url: '/',
+        icons: [
+          {
+            src: '/favicon.svg',
+            sizes: '48x46',
+            type: 'image/svg+xml',
+            purpose: 'any',
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/leaflet/')) {
+            return 'leaflet'
+          }
+
+          if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/')) {
+            return 'react'
+          }
+
+          if (id.includes('/node_modules/lucide-react/')) {
+            return 'ui'
+          }
+        },
+      },
+    },
+  },
 })
