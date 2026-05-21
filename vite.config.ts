@@ -2,8 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const appBasePath = '/pomodoro-timer/'
+
 // https://vite.dev/config/
 export default defineConfig({
+  base: appBasePath,
   server: {
     proxy: {
       '/api/airplanes': {
@@ -24,10 +27,11 @@ export default defineConfig({
         theme_color: '#161916',
         background_color: '#161916',
         display: 'standalone',
-        start_url: '/',
+        start_url: appBasePath,
+        scope: appBasePath,
         icons: [
           {
-            src: '/favicon.svg',
+            src: `${appBasePath}favicon.svg`,
             sizes: '48x46',
             type: 'image/svg+xml',
             purpose: 'any',
